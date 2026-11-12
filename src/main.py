@@ -425,4 +425,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if '--practice' in sys.argv:
+        sys.argv.remove('--practice')
+        from practice import main as practice_main
+        raise SystemExit(practice_main())
     raise SystemExit(main())

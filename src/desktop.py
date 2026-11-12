@@ -118,6 +118,70 @@ class DesktopInput:
                 "Windows blocked typing. Elevated apps may require matching permissions."
             )
 
+    def chord(self, key: str, modifiers: list[str]) -> None:
+        """Dispatch a complete key chord; always release injected modifiers."""
+        codes = {
+            "Shift": 16,
+            "Ctrl": 17,
+            "Alt": 18,
+            "Win": 91,
+            "Back": 8,
+            "Tab": 9,
+            "Enter": 13,
+            "Escape": 27,
+            "Space": 32,
+            "Left": 37,
+            "Up": 38,
+            "Right": 39,
+            "Down": 40,
+            "Home": 36,
+            "End": 35,
+            "Delete": 46,
+            "PageUp": 33,
+            "PageDown": 34,
+            "NumLock": 144,
+            "Add": 107,
+            "Subtract": 109,
+            "Multiply": 106,
+            "Divide": 111,
+            "Decimal": 110,
+        }
+        codes.update({f"F{i}": 111 + i for i in range(1, 13)})
+        codes.update({f"Num{i}": 96 + i for i in range(10)})
+        vk = codes.get(key, ord(key.upper()) if len(key) == 1 and key.isascii() else 0)
+        if not vk:
+            raise RuntimeError("Unsupported shortcut key: " + key)
+        if not self.is_current():
+            raise RuntimeError("Target changed; reopen Mousyst.")
+        held = []
+
+        def emit(code, up=False):
+            event = Input(
+                1, InputUnion(ki=KeyboardInput(code, 0, 2 if up else 0, 0, 0))
+            )
+            if user32.SendInput(1, ct.byref(event), ct.sizeof(Input)) != 1:
+                raise RuntimeError("Windows blocked key input.")
+
+        try:
+            if any(
+                user32.GetAsyncKeyState(code) & 0x8000 for code in (16, 17, 18, 91, 92)
+            ):
+                raise RuntimeError("Release physical modifier keys first.")
+            for mod in modifiers:
+                emit(codes[mod])
+                held.append(codes[mod])
+            emit(vk)
+            held.append(vk)
+        finally:
+            release_error = None
+            for code in reversed(held):
+                try:
+                    emit(code, True)
+                except RuntimeError as exc:
+                    release_error = exc
+            if release_error:
+                raise release_error
+
 
 class MiddleButtonHook(QObject):
     """Capture middle clicks on a dedicated message-loop thread."""

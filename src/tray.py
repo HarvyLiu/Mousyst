@@ -17,15 +17,15 @@ def app_icon() -> QIcon:
         painter = QPainter(image)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#e1eee6"))
+        painter.setBrush(QColor("#050505"))
         painter.drawRoundedRect(0, 0, size, size, size / 3, size / 3)
-        font = QFont("Segoe UI")
+        font = QFont("Monotype Corsiva")
         font.setPixelSize(round(size * 0.78))
         font.setWeight(QFont.Weight.DemiBold)
         painter.setFont(font)
-        painter.setPen(QColor("#19231e"))
+        painter.setPen(QColor("#ffffff"))
         painter.drawText(
-            0, -round(size * 0.08), size, size, Qt.AlignmentFlag.AlignCenter, "m"
+            0, -round(size * 0.08), size, size, Qt.AlignmentFlag.AlignCenter, "M"
         )
         painter.end()
         icon.addPixmap(image)

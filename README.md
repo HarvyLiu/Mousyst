@@ -1,93 +1,75 @@
-# Mousyst — desktop radial typing
+# Mousyst
 
-A Windows mouse-operated keyboard with a Python gesture engine and Qt Quick UI.
-Rounded vector sectors, alpha transparency, soft shadows, and animated highlights.
+A dark Windows keyboard operated with your mouse: click letters, swipe words,
+enter shortcuts, and scrub the caret without moving your hand to a keyboard.
 
-## Run the portable app
+## Download and run
 
-Extract the entire ZIP and open `Mousyst/Mousyst.exe`. Keep `_internal` beside it.
-Python and Qt do not need to be installed. Mousyst starts in the Windows system
-tray, near the clock. Its temporary logo is a pale green `m`. If Windows hides
-it, click the taskbar's upward arrow to find it. Run only one copy at a time.
+Download the Windows x64 ZIP from [Releases](https://github.com/HarvyLiu/Mousyst/releases).
+Extract the whole folder and open **MousystDesktop.exe**. Keep `_internal` beside it.
+No Python installation is needed. Mousyst starts in the tray with a white script
+M on black; right-click that icon to open Settings or Quit.
 
-- Middle-click in a text field to open the keyboard immediately.
-- Click the tray icon, or right-click it and choose **Show Mousyst**, to open the panel.
-- Closing or minimizing the panel hides it to the tray; typing remains available.
-- Right-click the tray icon and choose **Quit Mousyst** to exit completely and
-  restore ordinary middle-click behavior.
+1. Click the destination text field, then **middle-click** to show the keyboard.
+2. Click individual keys or hold left-click and trace a word, then release.
+3. Middle-click again or use the close icon to hide it.
 
-If Windows has no system tray available, Mousyst shows its panel and closing it exits.
+## Controls
 
-1. Click a text field in another app to put its caret where you want to type.
-2. Middle-click to summon the keyboard around your cursor (adjusted to fit the screen).
-3. Visit the center, move through a letter group, then cross a letter's outer edge.
-   The two side edges of the fan also enter its first/last letter (such as A/E).
-4. Return to the center before the next entry. Returning early cancels selection.
-5. Space and Backspace enter at the first ring's outer edge; they have no outer fan.
-6. Middle-click again, press Esc, or use the overlay's × to hide it.
+- **Suggestions:** click an alternative or scroll over the reserved suggestion bar
+  to replace the last word. Empty suggestions never move the keys.
+- **Symbols:** right-click a letter to enter its small printed symbol.
+- **ABC/123:** replace the main keys with symbol rows or a numpad in the same space.
+- **Shortcuts:** select Ctrl, Alt, Win, or Shift, then a key. Modifiers apply once.
+- **Repeat:** hold a letter or Backspace.
+- **Caret:** tap Space for a space; hold and drag it horizontally for caret movement.
+- **Settings:** choose Compact/Standard/Full, size, colors, repeat timing, symbols,
+  and optional predictive aiming. Config import/export is available separately.
 
-The overlay does not take keyboard focus. Switching foreground apps automatically
-hides it; middle-click again in the desired app. Middle clicks are reserved for
-Mousyst while it runs; scrolling is unaffected. The center displays MOUSYST until
-you enter something, then keeps the last entered character visible. Space is shown
-as ␣ and Backspace as ⌫. Clearing the local display resets the center label.
+Automatic opening is removed. Activation is manual through the middle button.
+See [the desktop guide](DESKTOP.md) for details and compatibility limits.
 
-Movement follows Windows mouse-hook events, with path checks between positions
-so quick returns can pass through the center between events. Outward overshoots
-beyond the overlay are processed before returning to the center. The remaining
-16 ms timer only checks focus and Esc; it does not sample typing gestures.
-
-Output uses Windows SendInput, not the clipboard. The panel's local session text
-is only an echo of Mousyst's entries; it is not synchronized with the destination
-app, and Clear local display does not delete text in that app. No text is saved.
-
-Ordinary Windows text fields are supported. Windows can block injection into
-higher-privilege apps, and some games/custom input systems may reject synthetic
-input. Mousyst reports blocked input in its panel. Release held modifiers before
-typing. No Enter action is sent automatically.
-
-This build supports lowercase English, Space and Backspace. Symbols, prediction,
-settings/config customization, and the general launcher remain later milestones.
-Mixed-DPI and multiple-monitor behavior needs broader physical-hardware testing.
+The app uses offline English word recognition. No production text or clipboard
+history is saved. Some custom/elevated apps can reject input or lack accessible
+caret information; alternatives are disabled when replacement cannot be verified.
+This is a desktop preview, with broader application and mixed-DPI testing still needed.
 
 ## Develop
 
-Use native Windows and Python 3.11+:
+Use native Windows x64 and Python 3.12:
 
 ```powershell
 python -m pip install -r requirements-dev.txt
-python src/main.py
-python -m pytest -q
-python -m ruff check src tests
-python -m mypy --strict src
-python src/main.py --smoke-test
-python tests/desktop_smoke.py --app src/main.py
+python src/desktop_app.py
+python -m pytest -q --basetemp build/pytest-local
+python -m ruff check src tests tools
 ```
 
-The smoke test isolates external output and verifies the actual QML UI. The
-opt-in desktop integration test creates its own disposable text window and checks
-real input, focus retention, middle-click activation, pointer gestures, controls,
-and dismissal. It never uses an existing document as its test target.
-
-For this workspace's local dependency folders, set:
-`$env:PYTHONPATH = "$PWD/.runtime;$PWD/.dev-tools"`.
-
-## Build
+Build the portable folder and ZIP:
 
 ```powershell
-./build-preview.ps1
+./build-preview.ps1 -Desktop -BundleName MousystDesktop
 ```
 
-Output: `dist/Mousyst/Mousyst.exe` and
-`dist/Mousyst-preview-windows-x64.zip`. This is a portable folder bundle, not an
-installer. The build isolates DLL search paths to avoid picking up incompatible
-libraries from unrelated developer tools. The Python interpreter and Qt runtime
-are bundled; this is not a tiny native-code-only executable.
+The build generates Windows UI Automation bindings before packaging. The bundled
+vocabulary is already included; `wordfreq` is only needed to regenerate it.
+Its attribution and license notices are in [src/data](src/data/ATTRIBUTION.md).
 
-The prior Qt practice build was approximately 55 MiB zipped / 142 MiB extracted.
-Its short local idle sample used 210 MiB working set and 0.62% of one CPU core;
-these are historical measurements, not benchmarks of the desktop-input build.
-No clean Windows VM test has been performed.
+The local practice harness remains available with `python src/practice.py`.
+See [EXPERIMENT.md](EXPERIMENT.md). The older radial prototype remains in Git history.
+There is no claim that mouse typing outperforms a physical keyboard.
 
-The QML presentation is original. Rovyl was a visual reference; none of its code
-or artwork was copied. The older planning/handoff documents remain historical.
+## Automatic releases
+
+GitHub Actions tests and builds Windows ZIPs on main-branch changes. To publish a
+new version, push a version tag:
+
+```powershell
+git tag v0.2.1
+git push origin v0.2.1
+```
+
+The workflow publishes the ZIP and SHA-256 checksum only after tests, UI checks,
+and packaging pass. Tags such as `v0.2.1-preview.1` are supported too. Use the
+Actions page for build logs and diagnostic screenshots. Manual workflow runs
+produce downloadable build artifacts without creating a release.
