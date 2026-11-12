@@ -35,7 +35,9 @@ jobs:
       - name: Lint
         run: python -m ruff check src tests tools
       - name: Unit tests
-        run: python -m pytest -q --basetemp build/pytest-ci
+        run: |
+          New-Item -ItemType Directory -Path build -Force | Out-Null
+          python -m pytest -q --basetemp build/pytest-ci
       - name: Source UI regression
         run: python src/desktop_app.py --smoke-test
       - name: Build portable desktop keyboard
