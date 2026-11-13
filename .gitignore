@@ -8,3 +8,7 @@ __pycache__/
 build/
 dist/
 USB_BACKUP_*/
+website/node_modules/
+website/dist/
+website/.astro/
+website/.vercel/
