@@ -114,11 +114,11 @@ Window {
                 Key {x:0;y:0;width:root.pitch-5;text:'Esc';value:'Escape'}
                 Key {objectName:'desktopBackspace';x:11*root.pitch;y:0;width:3*root.pitch-5;text:'';iconName:'backspace';value:'Back';repeatable:true}
                 Key {x:0;y:root.pitch;width:1.5*root.pitch-5;text:'Tab'}
-                Key {x:10.5*root.pitch;y:root.pitch;text:';';hint:':'}
-                Key {x:11.5*root.pitch;y:root.pitch;text:"'";hint:'"'}
+                Key {x:10.5*root.pitch;y:root.pitch;text:mousyst.shifted?':':';';value:';';hint:':'}
+                Key {x:11.5*root.pitch;y:root.pitch;text:mousyst.shifted?'"':"'";value:"'";hint:'"'}
                 Key {objectName:'desktopEnter';x:12.5*root.pitch;y:root.pitch;width:1.5*root.pitch-5;text:'';iconName:'enter';value:'Enter'}
                 Key {x:0;y:2*root.pitch;width:2.5*root.pitch-5;text:'';iconName:'shift';value:'Shift';checked:mousyst.shifted}
-                Repeater {model:[',','.','/'];Key {required property string modelData;required property int index;x:(9.5+index)*root.pitch;y:2*root.pitch;text:modelData;hint:['<','>','?'][index]}}
+                Repeater {model:[',','.','/'];Key {required property string modelData;required property int index;x:(9.5+index)*root.pitch;y:2*root.pitch;text:mousyst.shifted?mousyst.shiftLabel(modelData):modelData;value:modelData;hint:['<','>','?'][index]}}
                 Key {x:12.5*root.pitch;y:2*root.pitch;width:1.5*root.pitch-5;text:'';iconName:'shift';value:'Shift';checked:mousyst.shifted}
             }
             Item {
@@ -127,15 +127,19 @@ Window {
                 property bool pad:prefs.numberFormat==='Numpad'
                 Repeater {
                     model:numberBoard.pad?['7','8','9','/','4','5','6','*','1','2','3','-','0','.','=','+']:['1','2','3','4','5','6','7','8','9','0','+','-','*','/','=','(',')','[',']','<','>','!','?','@','#','$','%','&',':',';','"',"'",'\\','_','^']
-                    Key {required property string modelData;required property int index;text:modelData;repeatable:true
-                        x:(numberBoard.pad?3+index%4*2:index%14)*root.pitch
-                        y:(numberBoard.pad?Math.floor(index/4)*.75:Math.floor(index/14))*root.pitch
+                    Key {required property string modelData;required property int index;text:mousyst.shifted?mousyst.shiftLabel(modelData):modelData;value:modelData;repeatable:true
+                        x:(numberBoard.pad?1+index%4*2:index%12)*root.pitch
+                        y:(numberBoard.pad?Math.floor(index/4)*.75:Math.floor(index/12))*root.pitch
                         width:(numberBoard.pad?2:1)*root.pitch-5
                         height:(numberBoard.pad?.75:1)*root.pitch-5
                     }
                 }
-                Key {objectName:'numberFormatToggle';direct:false;x:12*root.pitch;y:2*root.pitch;width:2*root.pitch-5
-                    text:numberBoard.pad?'Symbols':'Numpad'
+                Key {x:12*root.pitch;y:0;width:2*root.pitch-5;text:'';iconName:'backspace';value:'Back';repeatable:true}
+                Key {x:12*root.pitch;y:root.pitch;width:2*root.pitch-5;text:'';iconName:'enter';value:'Enter'}
+                Key {x:12*root.pitch;y:2*root.pitch;width:2*root.pitch-5;text:'Esc';value:'Escape'}
+                Key {x:9*root.pitch;y:2*root.pitch;width:root.pitch-5;text:'';iconName:'shift';value:'Shift';checked:mousyst.shifted;visible:numberBoard.pad}
+                Key {objectName:'numberFormatToggle';direct:false;x:(numberBoard.pad?10:11)*root.pitch;y:2*root.pitch;width:(numberBoard.pad?2:1)*root.pitch-5
+                    text:numberBoard.pad?'Symbols':'Pad'
                     onReleased:mousyst.setPreference('numberFormat',numberBoard.pad?'Rows':'Numpad')
                 }
             }

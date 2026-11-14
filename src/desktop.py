@@ -56,6 +56,10 @@ class Input(ct.Structure):
 user32.GetForegroundWindow.restype = wt.HWND
 user32.GetWindowThreadProcessId.argtypes = [wt.HWND, ct.POINTER(wt.DWORD)]
 user32.IsWindow.argtypes = [wt.HWND]
+user32.GetKeyboardLayout.argtypes = [wt.DWORD]
+user32.GetKeyboardLayout.restype = wt.HANDLE
+user32.VkKeyScanExW.argtypes = [wt.WCHAR, wt.HANDLE]
+user32.VkKeyScanExW.restype = ct.c_short
 user32.SendInput.argtypes = [wt.UINT, ct.POINTER(Input), ct.c_int]
 user32.SendInput.restype = wt.UINT
 user32.GetAsyncKeyState.argtypes = [ct.c_int]
@@ -148,7 +152,22 @@ class DesktopInput:
         }
         codes.update({f"F{i}": 111 + i for i in range(1, 13)})
         codes.update({f"Num{i}": 96 + i for i in range(10)})
-        vk = codes.get(key, ord(key.upper()) if len(key) == 1 and key.isascii() else 0)
+        modifiers = list(dict.fromkeys(modifiers))
+        if any(mod not in ("Shift", "Ctrl", "Alt", "Win") for mod in modifiers):
+            raise RuntimeError("Unsupported shortcut modifier")
+        vk = codes.get(key, 0)
+        if not vk and len(key) == 1:
+            thread = user32.GetWindowThreadProcessId(self.target, None)
+            layout = user32.GetKeyboardLayout(thread)
+            mapped = user32.VkKeyScanExW(key.lower() if key.isalpha() else key, layout)
+            if mapped != -1:
+                vk = mapped & 255
+                state = (mapped >> 8) & 255
+                if state & ~7:
+                    raise RuntimeError("Unsupported shortcut shift state")
+                for bit, mod in ((1, "Shift"), (2, "Ctrl"), (4, "Alt")):
+                    if state & bit and mod not in modifiers:
+                        modifiers.append(mod)
         if not vk:
             raise RuntimeError("Unsupported shortcut key: " + key)
         if not self.is_current():
@@ -156,8 +175,10 @@ class DesktopInput:
         held = []
 
         def emit(code, up=False):
+            extended = code in (33, 34, 35, 36, 37, 38, 39, 40, 45, 46, 91, 92, 111, 144)
+            flags = (2 if up else 0) | int(extended)
             event = Input(
-                1, InputUnion(ki=KeyboardInput(code, 0, 2 if up else 0, 0, 0))
+                1, InputUnion(ki=KeyboardInput(code, 0, flags, 0, 0))
             )
             if user32.SendInput(1, ct.byref(event), ct.sizeof(Input)) != 1:
                 raise RuntimeError("Windows blocked key input.")

@@ -23,6 +23,8 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from accessibility import FocusObserver
 from desktop import DesktopInput, MiddleButtonHook
+from input_session import matches_owner
+from keymap import shifted_text
 from practice import Controller
 from settings import DEFAULTS, Settings
 from tray import app_icon
@@ -60,6 +62,10 @@ class DesktopController(Controller):
     @Property(bool, notify=desktopChanged)
     def isRepeating(self):
         return self.repeating
+
+    @Slot(str, result=str)
+    def shiftLabel(self, value):
+        return shifted_text(value)
 
     @Slot(float, float, result=str)
     def aim(self, x, y):
@@ -183,7 +189,6 @@ class DesktopController(Controller):
 
     @Slot(str)
     def key(self, value):
-        self.owner = None
         if value == "Shift":
             super().key(value)
             return
@@ -191,6 +196,8 @@ class DesktopController(Controller):
             self.modifier(value)
             return
         if self.modifiers:
+            self.owner = None
+            self.editor.external("")
             mods = list(self.activeModifiers) + (["Shift"] if self.shift else [])
             self.invalidate()
             if self.output:
@@ -226,8 +233,10 @@ class DesktopController(Controller):
             and value[1:].isdigit()
             or value.startswith("Num")
         ):
+            self.owner = None
             self.invalidate()
             if value == "Escape":
+                self.cancel()
                 self.hideRequested.emit()
                 return
             if self.output:
@@ -241,7 +250,12 @@ class DesktopController(Controller):
                 self.editor.external("")
             self.changed.emit()
             return
-        text = value.upper() if self.shift else value
+        text = shifted_text(value) if self.shift else value
+        current = self.snapshot() if self.output else None
+        sensitive = self.output and (not current or current.get("password", False))
+        if self.output and self.editor.auto_space and not matches_owner(self.owner, current):
+            # A local trailing space is not permission to delete external text.
+            self.editor.external("")
         before = self.editor.text
         self.editor.insert(text)
         after = self.editor.text
@@ -253,14 +267,17 @@ class DesktopController(Controller):
                 self.send_text(text)
 
             if not self.dispatch(send):
-                self.editor.external(before)
+                self.editor.external("")
+        if sensitive:
+            self.editor.external("")
+        self.owner = None
         self.shift = False
         self.invalidate()
         self.changed.emit()
 
     @Slot(str)
     def secondary(self, letter):
-        self.cancel()
+        self.releaseHold()
         symbol = self.preferences["symbols"].get(letter, "")
         if symbol:
             self.key(symbol)
@@ -279,17 +296,10 @@ class DesktopController(Controller):
             return
         before = self.snapshot()
         pending = getattr(self, "pending_field", None)
-        if (
-            self.output
-            and pending
-            and (
-                not before
-                or before["identity"] != pending["identity"]
-                or before["prefix"] != pending["prefix"]
-                or before.get("caret") != pending.get("caret")
-            )
-        ):
+        if self.output and not matches_owner(pending, before):
             self.cancel()
+            self.status = "Field changed or could not be verified. Use exact clicks."
+            self.changed.emit()
             return
         if before and before["password"]:
             self.cancel()
@@ -316,6 +326,11 @@ class DesktopController(Controller):
             self.changed.emit()
             return
         self.pending_field = self.snapshot()
+        if self.output and (not self.pending_field or self.pending_field.get("password", False)):
+            self.cancel()
+            self.status = "Field could not be verified for swipe typing. Use exact clicks."
+            self.changed.emit()
+            return
         super().stroke(points)
 
     @Slot(int)
@@ -371,10 +386,11 @@ class DesktopController(Controller):
             self.cancel()
             return
         start, end = self.editor.span
-        if self.output:
-            self.dispatch(
-                lambda: [self.output.chord("Back", []) for _ in range(end - start)]
-            )
+        if self.output and not self.dispatch(
+            lambda: [self.output.chord("Back", []) for _ in range(end - start)]
+        ):
+            self.editor.external("")
+            return
         self.editor.undo()
         self.owner = None
         self.invalidate()
@@ -415,6 +431,8 @@ class DesktopController(Controller):
         if hasattr(self, "repeat_timer"):
             self.releaseHold()
         self.owner = None
+        self.pending_field = None
+        self.editor.external("")
         super().cancel()
         self.status = (
             "Middle-click to show or hide · Right-click a letter for its symbol"
@@ -424,8 +442,14 @@ class DesktopController(Controller):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke-test", action="store_true")
+    parser.add_argument("--development", action="store_true")
     parser.add_argument("--test-layout-report", type=Path)
     args = parser.parse_args()
+    development = args.development or Path(sys.executable).stem.lower() == "mousystnext"
+    if development:
+        import os
+        os.environ["MOUSYST_SETTINGS_DIR"] = str(Path(__file__).resolve().parents[1] / "build/development-settings")
+    instance_name = "MousystNext" if development else "MousystDesktop"
     QQuickStyle.setStyle("Basic")
     app = QApplication(sys.argv[:1])
     app.setApplicationName("Mousyst")
@@ -448,12 +472,12 @@ def main():
     lock = QLockFile(
         str(
             Path(QStandardPaths.writableLocation(QStandardPaths.TempLocation))
-            / "mousyst-desktop.lock"
+            / ("mousyst-next.lock" if development else "mousyst-desktop.lock")
         )
     )
     if not args.smoke_test and not lock.tryLock(100):
         socket = QLocalSocket()
-        socket.connectToServer("MousystDesktop")
+        socket.connectToServer(instance_name)
         if socket.waitForConnected(300):
             socket.write(b"show")
             socket.waitForBytesWritten(300)
@@ -540,8 +564,8 @@ def main():
     controller.hideRequested.connect(hide)
     server = QLocalServer()
     if not args.smoke_test:
-        QLocalServer.removeServer("MousystDesktop")
-        server.listen("MousystDesktop")
+        QLocalServer.removeServer(instance_name)
+        server.listen(instance_name)
 
         def activate_existing():
             connection = server.nextPendingConnection()
@@ -556,7 +580,7 @@ def main():
     menu.addAction("Quit", app.quit)
     tray = QSystemTrayIcon(app.windowIcon(), app)
     tray.setContextMenu(menu)
-    tray.setToolTip("Mousyst · middle-click to type")
+    tray.setToolTip("Mousyst NEXT · testing branch" if args.development else "Mousyst · middle-click to type")
     tray.activated.connect(
         lambda reason: show() if reason == QSystemTrayIcon.Trigger else None
     )
