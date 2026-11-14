@@ -6,7 +6,7 @@ This is the first input-safety checkpoint, not the completed improvement roadmap
 
 ## Run
 
-Use this checkout's `dist/MousystNext/MousystNext.exe`, retaining its `_internal` folder. Its executable name enables isolated development mode automatically. It has a separate instance lock, local IPC name, settings folder, and NEXT tray tooltip.
+Use this checkout's `dist/compatibility-update/MousystNext/MousystNext.exe`, retaining its `_internal` folder. This update uses a fresh output folder because Windows prevented replacement of files in the previous testing bundle. Its executable name enables isolated development mode automatically. It has a separate instance lock, local IPC name, settings folder, and NEXT tray tooltip.
 
 For source execution, pass `python src/desktop_app.py --development`.
 
