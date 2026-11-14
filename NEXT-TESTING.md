@@ -6,7 +6,7 @@ This is the first input-safety checkpoint, not the completed improvement roadmap
 
 ## Run
 
-Use this checkout's `dist/compatibility-update/MousystNext/MousystNext.exe`, retaining its `_internal` folder. This update uses a fresh output folder because Windows prevented replacement of files in the previous testing bundle. Its executable name enables isolated development mode automatically. It has a separate instance lock, local IPC name, settings folder, and NEXT tray tooltip.
+Use this checkout's `dist/suggestions-update/MousystNext/MousystNext.exe`, retaining its `_internal` folder. Updates use fresh output folders so running testing bundles are not overwritten. Its executable name enables isolated development mode automatically. It has a separate instance lock, local IPC name, settings folder, and NEXT tray tooltip.
 
 For source execution, pass `python src/desktop_app.py --development`.
 
@@ -21,6 +21,14 @@ The first checkpoint required caret information even for inserting a swipe word.
 The system color dialog is replaced with a matching dark panel: presets, a preview, hex input, hue/saturation/brightness sliders, and explicit Apply/Cancel. There is no draggable color square. Draft changes are discarded on Cancel or Escape.
 
 Test the affected apps again, especially fields where clicks previously worked but swipes did not. Also test switching fields during recognition, clicking punctuation after an insertion, changing colors repeatedly, cancelling, and reopening the picker. If a field remains unsupported, report the app and type of text box; this is not a claim of universal compatibility.
+
+### Translate popup and suggestion controls follow-up
+
+Chrome can report an extension's outer pane as focused while a descendant textbox also reports keyboard focus. The observer now resolves a single focused Edit/ComboBox descendant inside that host. It does not select arbitrary textboxes or guess when multiple focused inputs are reported. This addresses the host-pane failure observed while examining the Translate popup.
+
+Suggestion highlighting now follows successful controller replacements. Wheel movement resets between word sessions, keeps fractional notch movement within a session, and supports multiple notches per event. Replacement and word Undo also recheck password and window ownership.
+
+67 unit tests pass, and offscreen UI checks cover suggestion clicks, wheel movement in both directions, multiple notches, and partial-wheel reset. Live end-to-end Translate insertion/replacement is not yet confirmed: focus changed to another Chrome window during a live check. Retest with the empty Translate popup focused, swipe a word, scroll/click alternatives, and verify Undo before using important text. Google Docs' hidden edit proxy remains unqualified; do not infer its replacement support from ordinary browser textboxes.
 
 ## Implemented in this checkpoint
 
@@ -44,7 +52,7 @@ Test the affected apps again, especially fields where clicks previously worked b
 
 ## Verification recorded
 
-- 58 unit tests passed, including fake-output regressions for editable controls without caret APIs, changed destinations, and stale password state (no live application injection).
+- 67 unit tests passed, including fake-output regressions for popup focus resolution, editable controls without caret APIs, changed destinations, repeated suggestion replacement, and stale password state.
 - Python lint passed.
 - Source offscreen UI smoke passed.
 - Packaged offscreen UI smoke passed (no live hooks or external typing).

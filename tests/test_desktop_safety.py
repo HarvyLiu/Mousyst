@@ -169,3 +169,42 @@ def test_swipe_rechecks_password_after_leaving_password_field(controller):
     c.recognizer = None
     c.stroke([{"x": 0, "y": 0}, {"x": 1, "y": 1}])
     assert c.pending_field == field()
+
+
+def test_suggestions_cycle_back_and_forth_with_verified_replacement(controller):
+    c = controller
+    c.pending_field = field(prefix="", caret=0)
+    current = c.pending_field
+    c.snapshot = lambda: current
+    c.receive(c.generation, c.editor.revision, ["hello", "help", "held"], 20)
+    assert c.owner == field()
+    for steps, expected, word in [(1, 1, "help"), (1, 2, "held"), (-2, 0, "hello")]:
+        current = dict(c.owner)
+        c.cycleSuggestion(steps)
+        assert c.selectedSuggestion == expected
+        assert c.editor.text == word + " "
+        assert c.owner["prefix"] == word + " "
+        assert c.owner["caret"] == len(word) + 1
+
+
+def test_failed_suggestion_dispatch_does_not_select_new_candidate(controller):
+    c = controller
+    c.editor.word("hello")
+    c.owner = field()
+    c.candidates = ["hello", "help"]
+    c.output.fail = True
+    c.cycleSuggestion(1)
+    assert c.selectedSuggestion == 0
+    assert c.owner is None
+
+
+@pytest.mark.parametrize("change", [{"password": True}, {"hwnd": 43}, {"caret": 5}])
+def test_suggestion_replacement_does_not_follow_changed_target(controller, change):
+    c = controller
+    c.editor.word("hello")
+    c.owner = field()
+    c.candidates = ["hello", "help"]
+    c.snapshot = lambda: dict(field(), **change)
+    c.cycleSuggestion(1)
+    assert not c.output.events
+    assert c.selectedSuggestion == 0

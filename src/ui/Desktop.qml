@@ -60,12 +60,14 @@ Window {
             }
             RowLayout {
                 id:suggestions;objectName:'desktopSuggestions';Layout.minimumHeight:34;Layout.preferredHeight:34;Layout.maximumHeight:34
-                property int candidateIndex:0
+                property int candidateIndex:mousyst.selectedSuggestion
+                property int session:mousyst.suggestionSession
                 property real wheelDelta:0
-                Repeater {model:3;Key {required property int index;direct:false;text:mousyst.suggestions[index]||'';enabled:index<mousyst.suggestions.length;opacity:enabled?1:.25;checked:enabled&&index===suggestions.candidateIndex;Layout.fillWidth:true;implicitHeight:34;onReleased:{suggestions.candidateIndex=index;mousyst.alternative(index)}}}
+                onSessionChanged:wheelDelta=0
+                Repeater {model:3;Key {required property int index;objectName:'desktopSuggestion'+index;direct:false;text:mousyst.suggestions[index]||'';enabled:index<mousyst.suggestions.length;opacity:enabled?1:.25;checked:enabled&&index===suggestions.candidateIndex;Layout.fillWidth:true;implicitHeight:34;onReleased:mousyst.alternative(index)}}
                 Key {text:'';iconName:'undo';direct:false;enabled:mousyst.suggestions.length>0;opacity:enabled?1:.25;implicitHeight:34;onReleased:mousyst.undoWord()}
                 MouseArea {anchors.fill:parent;acceptedButtons:Qt.NoButton
-                    onWheel:wheel=>{if(mousyst.suggestions.length===0){wheel.accepted=false;return}suggestions.wheelDelta+=wheel.angleDelta.y;if(Math.abs(suggestions.wheelDelta)>=120){suggestions.candidateIndex=Math.max(0,Math.min(mousyst.suggestions.length-1,suggestions.candidateIndex+(suggestions.wheelDelta<0?1:-1)));suggestions.wheelDelta=0;mousyst.alternative(suggestions.candidateIndex)}wheel.accepted=true}
+                    onWheel:wheel=>{if(mousyst.suggestions.length===0){suggestions.wheelDelta=0;wheel.accepted=false;return}suggestions.wheelDelta+=wheel.angleDelta.y;let steps=Math.trunc(suggestions.wheelDelta/120);if(steps){suggestions.wheelDelta-=steps*120;mousyst.cycleSuggestion(-steps)}wheel.accepted=true}
                 }
             }
             RowLayout {visible:prefs.layout==='Full';spacing:5;Repeater {model:12;Key {required property int index;text:'F'+(index+1);Layout.fillWidth:true}}}
@@ -108,7 +110,7 @@ Window {
                     anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;preventStealing:true
                     onPressed:mouse=>{let x=mouse.x/root.pitch-1,y=mouse.y/root.pitch;let exact=board.letterAt(x,y);if(!exact){mouse.accepted=false;return}board.first=mouse.button===Qt.RightButton?exact:mousyst.aim(x,y);board.clearVisual();board.tracking=true;board.swiping=false;board.path=[{x:x,y:y}];if(mouse.button===Qt.LeftButton)mousyst.hold(board.first)}
                     onPositionChanged:mouse=>{if(!board.tracking||!(pressedButtons&Qt.LeftButton))return;if(mouse.x<0||mouse.y<0||mouse.x>=width||mouse.y>=height){board.abort();return}let p={x:mouse.x/root.pitch-1,y:mouse.y/root.pitch};if(!mousyst.isRepeating&&Math.hypot(p.x-board.path[0].x,p.y-board.path[0].y)>1/3&&mousyst.activeModifiers.length===0){board.swiping=true;mousyst.releaseHold()}board.path.push(p);if(board.swiping)board.paintPoint(p)}
-                    onReleased:mouse=>{if(!board.tracking)return;let repeated=mousyst.isRepeating;mousyst.releaseHold();if(mouse.x>=0&&mouse.y>=0&&mouse.x<width&&mouse.y<height){if(mouse.button===Qt.RightButton&&board.letterAt(mouse.x/root.pitch-1,mouse.y/root.pitch)===board.first)mousyst.secondary(board.first);else if(mouse.button===Qt.LeftButton&&board.swiping){board.path.push({x:mouse.x/root.pitch-1,y:mouse.y/root.pitch});suggestions.candidateIndex=0;mousyst.stroke(board.path)}else if(mouse.button===Qt.LeftButton&&!repeated)mousyst.key(board.first)}board.abort()}
+                    onReleased:mouse=>{if(!board.tracking)return;let repeated=mousyst.isRepeating;mousyst.releaseHold();if(mouse.x>=0&&mouse.y>=0&&mouse.x<width&&mouse.y<height){if(mouse.button===Qt.RightButton&&board.letterAt(mouse.x/root.pitch-1,mouse.y/root.pitch)===board.first)mousyst.secondary(board.first);else if(mouse.button===Qt.LeftButton&&board.swiping){board.path.push({x:mouse.x/root.pitch-1,y:mouse.y/root.pitch});mousyst.stroke(board.path)}else if(mouse.button===Qt.LeftButton&&!repeated)mousyst.key(board.first)}board.abort()}
                     onCanceled:board.abort()
                 }
                 Key {x:0;y:0;width:root.pitch-5;text:'Esc';value:'Escape'}

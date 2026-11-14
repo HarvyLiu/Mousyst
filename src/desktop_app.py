@@ -43,6 +43,7 @@ class DesktopController(Controller):
         self.output = None if smoke else DesktopInput()
         self.observer = None if smoke else FocusObserver()
         self.owner = None
+        self.selected_candidate = 0
         self.current_field = None
         self.suppressed = None
         self.repeat_key = ""
@@ -62,6 +63,23 @@ class DesktopController(Controller):
     @Property(bool, notify=desktopChanged)
     def isRepeating(self):
         return self.repeating
+
+    @Property(int, notify=desktopChanged)
+    def selectedSuggestion(self):
+        return self.selected_candidate if self.candidates else 0
+
+    @Property(int, notify=desktopChanged)
+    def suggestionSession(self):
+        return self.generation
+
+    @Slot(int)
+    def cycleSuggestion(self, steps):
+        if self.candidates:
+            index = max(
+                0, min(len(self.candidates) - 1, self.selectedSuggestion + steps)
+            )
+            if index != self.selectedSuggestion:
+                self.alternative(index)
 
     @Slot(str, result=str)
     def shiftLabel(self, value):
@@ -309,6 +327,7 @@ class DesktopController(Controller):
             self.cancel()
             return
         old = self.editor.text
+        self.selected_candidate = 0
         super().receive(generation, revision, words, latency)
         addition = self.editor.text[len(old) :]
         if addition and not self.dispatch(lambda: self.send_text(addition)):
@@ -346,13 +365,7 @@ class DesktopController(Controller):
         if not 0 <= index < len(self.candidates):
             return
         current = self.snapshot()
-        if self.output and (
-            not self.owner
-            or not current
-            or current["identity"] != self.owner["identity"]
-            or current["prefix"] != self.owner["prefix"]
-            or current.get("caret") != self.owner.get("caret")
-        ):
+        if self.output and not matches_owner(self.owner, current):
             self.owner = None
             self.invalidate()
             self.status = "Caret or field changed; alternatives cleared."
@@ -374,6 +387,7 @@ class DesktopController(Controller):
 
         if self.dispatch(replace):
             self.editor.replace(self.candidates[index])
+            self.selected_candidate = index
             if self.owner:
                 self.owner["prefix"] = (self.owner["prefix"][: -len(old)] + new)[-512:]
                 self.owner["caret"] += len(new) - len(old)
@@ -384,13 +398,7 @@ class DesktopController(Controller):
         if self.editor.span is None:
             return
         current = self.snapshot()
-        if self.output and (
-            not current
-            or not self.owner
-            or current["identity"] != self.owner["identity"]
-            or current["prefix"] != self.owner["prefix"]
-            or current.get("caret") != self.owner.get("caret")
-        ):
+        if self.output and not matches_owner(self.owner, current):
             self.cancel()
             return
         start, end = self.editor.span
@@ -638,6 +646,7 @@ def main():
 
         def smoke():
             from PySide6.QtCore import QPointF, Qt
+            from PySide6.QtGui import QWheelEvent
             from PySide6.QtQuick import QQuickItem
             from PySide6.QtTest import QTest
 
@@ -666,6 +675,68 @@ def main():
                         enter.mapToScene(QPointF(0, 0)),
                         window.height(),
                     ) == stable, "Suggestions moved the keyboard"
+                controller.editor.external("")
+                controller.receive(
+                    controller.generation,
+                    controller.editor.revision,
+                    ["hello", "help", "held"],
+                    20,
+                )
+                QTest.qWait(25)
+                suggestions = window.findChild(QQuickItem, "desktopSuggestions")
+                QTest.mouseClick(
+                    window,
+                    Qt.LeftButton,
+                    Qt.NoModifier,
+                    suggestions.mapToScene(
+                        QPointF(suggestions.width() / 2 - 15, 17)
+                    ).toPoint(),
+                )
+                QTest.qWait(25)
+                assert (
+                    controller.editor.text == "help "
+                    and controller.selectedSuggestion == 1
+                )
+                wheel_point = suggestions.mapToScene(
+                    QPointF(suggestions.width() / 2, 17)
+                )
+
+                def wheel(delta):
+                    event = QWheelEvent(
+                        wheel_point,
+                        QPointF(window.mapToGlobal(wheel_point.toPoint())),
+                        QPoint(),
+                        QPoint(0, delta),
+                        Qt.NoButton,
+                        Qt.NoModifier,
+                        Qt.NoScrollPhase,
+                        False,
+                    )
+                    QApplication.sendEvent(window, event)
+                    QTest.qWait(25)
+
+                wheel(-120)
+                assert (
+                    controller.editor.text == "held "
+                    and controller.selectedSuggestion == 2
+                )
+                wheel(240)
+                assert (
+                    controller.editor.text == "hello "
+                    and controller.selectedSuggestion == 0
+                )
+                wheel(-60)
+                assert suggestions.property("wheelDelta") == -60
+                controller.cancel()
+                controller.receive(
+                    controller.generation,
+                    controller.editor.revision,
+                    ["world", "word"],
+                    20,
+                )
+                QTest.qWait(25)
+                assert suggestions.property("wheelDelta") == 0
+                assert suggestions.property("candidateIndex") == 0
                 controller.editor.external("hello ")
                 QTest.mouseClick(
                     window,
@@ -844,14 +915,23 @@ def main():
                                 "fixed suggestion area and Enter position after Backspace",
                                 "ABC/numbers replace keys without expansion; digit entry; numpad switch",
                                 "in-panel color picker: preview, Cancel, Apply, hue slider",
+                                "suggestion click, wheel in both directions, multi-notch wheel, reset between words",
                             ],
                         }
                     )
                 )
                 app.exit(0)
             except (AssertionError, AttributeError, RuntimeError) as exc:
+                import traceback
+
                 (folder / "smoke.json").write_text(
-                    json.dumps({"ok": False, "error": str(exc)})
+                    json.dumps(
+                        {
+                            "ok": False,
+                            "error": str(exc),
+                            "traceback": traceback.format_exc(),
+                        }
+                    )
                 )
                 app.exit(1)
 
