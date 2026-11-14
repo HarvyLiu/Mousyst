@@ -442,6 +442,12 @@ class DesktopController(Controller):
         for _ in range(abs(steps)):
             self.key("Right" if steps > 0 else "Left")
 
+    @Slot(int)
+    def scrubVertical(self, steps):
+        self.releaseHold()
+        for _ in range(abs(steps)):
+            self.key("Down" if steps > 0 else "Up")
+
     @Slot()
     def cancel(self):
         if hasattr(self, "repeat_timer"):
@@ -737,6 +743,30 @@ def main():
                 QTest.qWait(25)
                 assert suggestions.property("wheelDelta") == 0
                 assert suggestions.property("candidateIndex") == 0
+                from types import SimpleNamespace
+
+                navigation = []
+                controller.output = SimpleNamespace(
+                    chord=lambda key, mods: navigation.append(("key", key)),
+                    send=lambda text: navigation.append(("text", text)),
+                )
+                space_point = window.property("spaceCenter").toPoint()
+                for dx, dy in [(-18, 0), (18, 0), (0, -26), (0, 26)]:
+                    QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, space_point)
+                    QTest.mouseMove(window, space_point + QPoint(dx, dy), 25)
+                    QTest.mouseRelease(
+                        window,
+                        Qt.LeftButton,
+                        Qt.NoModifier,
+                        space_point + QPoint(dx, dy),
+                    )
+                assert navigation == [
+                    ("key", k) for k in ("Left", "Left", "Right", "Right", "Up", "Down")
+                ], navigation
+                QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, space_point)
+                assert navigation[-1] == ("text", "SPACE")
+                controller.output = None
+                controller.cancel()
                 controller.editor.external("hello ")
                 QTest.mouseClick(
                     window,
@@ -916,6 +946,7 @@ def main():
                                 "ABC/numbers replace keys without expansion; digit entry; numpad switch",
                                 "in-panel color picker: preview, Cancel, Apply, hue slider",
                                 "suggestion click, wheel in both directions, multi-notch wheel, reset between words",
+                                "Spacebar caret scrub in four directions without stray spaces; tap inserts space",
                             ],
                         }
                     )

@@ -6,7 +6,7 @@ This is the first input-safety checkpoint, not the completed improvement roadmap
 
 ## Run
 
-Use this checkout's `dist/suggestions-update/MousystNext/MousystNext.exe`, retaining its `_internal` folder. Updates use fresh output folders so running testing bundles are not overwritten. Its executable name enables isolated development mode automatically. It has a separate instance lock, local IPC name, settings folder, and NEXT tray tooltip.
+Use this checkout's `dist/caret-update/MousystNext/MousystNext.exe`, retaining its `_internal` folder. Updates use fresh output folders so running testing bundles are not overwritten. Its executable name enables isolated development mode automatically. It has a separate instance lock, local IPC name, settings folder, and NEXT tray tooltip.
 
 For source execution, pass `python src/desktop_app.py --development`.
 
@@ -32,6 +32,14 @@ Suggestion highlighting now follows successful controller replacements. Wheel mo
 
 ## Implemented in this checkpoint
 
+### Four-direction Spacebar and punctuation update
+
+Drag Space left/right to move by character, or up/down to move by line. The vertical distance threshold is three times the horizontal setting, with a minimum of 18 pixels. The dominant direction wins at each movement step to reduce diagonal jitter; the direction can change during a held gesture. A tap still inserts Space, and a drag never adds a trailing Space. Normal Windows Up/Down behavior applies: single-line controls may handle those keys differently.
+
+After a swipe word, punctuation replaces the automatic separating space when the caret, field, and expected text are still verified. Supported characters include period, comma, semicolon, colon, apostrophe, quotation marks, question/exclamation marks, closing brackets, percent, and common typographic equivalents. Opening brackets and mathematical operators retain spacing. This does not remove manually typed spaces or delete text when ownership cannot be verified.
+
+95 unit tests pass. The isolated UI check covers all four drag directions and tapping Space; no live applications are used for these checks.
+
 - Check field/caret/expected prefix before deleting a word's automatic space.
 - Reject delayed recognition with missing, password or changed origin information.
 - Clear transient typing context on cancellation and avoid retaining known-password/unknown-field click text in the local echo.
@@ -52,7 +60,7 @@ Suggestion highlighting now follows successful controller replacements. Wheel mo
 
 ## Verification recorded
 
-- 67 unit tests passed, including fake-output regressions for popup focus resolution, editable controls without caret APIs, changed destinations, repeated suggestion replacement, and stale password state.
+- 95 unit tests passed, including fake-output regressions for punctuation-space ownership, vertical caret movement, popup focus resolution, editable controls without caret APIs, changed destinations, repeated suggestion replacement, and stale password state.
 - Python lint passed.
 - Source offscreen UI smoke passed.
 - Packaged offscreen UI smoke passed (no live hooks or external typing).

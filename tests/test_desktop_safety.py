@@ -72,6 +72,50 @@ def test_owned_punctuation_removes_only_owned_space(controller):
     assert c.output.events == [("key", "Back", []), ("text", ".")]
 
 
+@pytest.mark.parametrize("symbol", list(".,;:'\"!?%)]}…’”"))
+def test_punctuation_attaches_to_owned_swipe_word(controller, symbol):
+    c = controller
+    c.editor.word("hello")
+    c.owner = field()
+    c.key(symbol)
+    assert c.output.events == [("key", "Back", []), ("text", symbol)]
+    assert c.editor.text == "hello" + symbol
+    assert not c.editor.auto_space
+
+
+@pytest.mark.parametrize("symbol", ["'", '"', "]", "%"])
+def test_punctuation_preserves_unowned_space(controller, symbol):
+    c = controller
+    c.editor.external("hello ")
+    c.key(symbol)
+    assert c.output.events == [("text", symbol)]
+    assert c.editor.text == "hello " + symbol
+
+
+@pytest.mark.parametrize("symbol", ["(", "[", "{", "+", "=", "/"])
+def test_opening_brackets_and_operators_keep_word_spacing(controller, symbol):
+    c = controller
+    c.editor.word("hello")
+    c.owner = field()
+    c.key(symbol)
+    assert c.output.events == [("text", symbol)]
+    assert c.editor.text == "hello " + symbol
+
+
+@pytest.mark.parametrize("steps,key", [(-2, "Up"), (2, "Down"), (0, None)])
+def test_vertical_scrub_uses_arrow_keys_and_invalidates_word(controller, steps, key):
+    c = controller
+    c.editor.word("hello")
+    c.owner = field()
+    c.candidates = ["hello", "help"]
+    c.repeat_key = "a"
+    c.scrubVertical(steps)
+    assert c.output.events == [("key", key, [])] * abs(steps)
+    assert c.repeat_key == ""
+    if steps:
+        assert c.owner is None and not c.candidates and c.editor.span is None
+
+
 @pytest.mark.parametrize(
     "pending,current",
     [

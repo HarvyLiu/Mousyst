@@ -132,6 +132,7 @@ Item {
                 RowLayout {Caption {text:'Repeat delay · ms'}Stepper {from:200;to:1500;stepSize:50;value:prefs.repeatDelay;onValueModified:mousyst.setPreference('repeatDelay',value)}}
                 RowLayout {Caption {text:'Repeat interval · ms'}Stepper {from:25;to:500;stepSize:25;value:prefs.repeatInterval;onValueModified:mousyst.setPreference('repeatInterval',value)}}
                 RowLayout {Caption {text:'Caret sensitivity'}Stepper {from:3;to:40;value:prefs.scrubPixels;onValueModified:mousyst.setPreference('scrubPixels',value)}}
+                Caption {text:'Drag Space left/right by character or up/down by line.';font.pixelSize:11;color:'#81818f';wrapMode:Text.Wrap}
                 RowLayout {Caption {text:'Right-click symbol'}Choice {id:letter;model:'qwertyuiopasdfghjklzxcvbnm'.split('');implicitWidth:74}TextField {text:prefs.symbols[letter.currentText]||'';maximumLength:1;implicitWidth:66;implicitHeight:36;color:'#eeeef1';horizontalAlignment:Text.AlignHCenter;onEditingFinished:if(text.length===1)mousyst.setSymbol(letter.currentText,text);background:Rectangle {radius:6;color:'#24242a';border.color:'#404048'}}}
                 Section {text:'CONFIGURATION'}
                 RowLayout {Action {text:'Import…';onClicked:mousyst.importSettings()}Action {text:'Export…';onClicked:mousyst.exportSettings()}Action {text:'Reset defaults';onClicked:mousyst.resetSettings()}}

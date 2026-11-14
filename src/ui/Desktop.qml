@@ -9,6 +9,7 @@ Window {
     visible:false
     property bool settingsOpen:false
     property bool numbers:false
+    readonly property point spaceCenter:spaceBar.mapToItem(root.contentItem,spaceBar.width/2,spaceBar.height/2)
     property var prefs:mousyst.preferences
     property real pitch:54*prefs.scale
     width:14*pitch+24
@@ -150,11 +151,23 @@ Window {
                 Key {text:'Ctrl';checked:mousyst.activeModifiers.indexOf('Ctrl')>=0}
                 Key {text:'';iconName:'windows';value:'Win';checked:mousyst.activeModifiers.indexOf('Win')>=0}
                 Key {text:'Alt';checked:mousyst.activeModifiers.indexOf('Alt')>=0}
-                Key {text:'';value:' ';Layout.fillWidth:true
-                    property real startX:0;property real lastX:0;property bool scrubbing:false
+                Key {id:spaceBar;objectName:'desktopSpace';text:'';value:' ';Layout.fillWidth:true
+                    property real startX:0;property real startY:0;property real lastX:0;property real lastY:0;property bool scrubbing:false
                     MouseArea {anchors.fill:parent;preventStealing:true
-                        onPressed:mouse=>{parent.startX=mouse.x;parent.lastX=mouse.x;parent.scrubbing=false;scrubDelay.restart()}
-                        onPositionChanged:mouse=>{if(!pressed)return;if(Math.abs(mouse.x-parent.startX)>=6)parent.scrubbing=true;if(parent.scrubbing){let step=Math.trunc((mouse.x-parent.lastX)/prefs.scrubPixels);if(step){mousyst.scrub(step);parent.lastX+=step*prefs.scrubPixels}}}
+                        onPressed:mouse=>{parent.startX=mouse.x;parent.startY=mouse.y;parent.lastX=mouse.x;parent.lastY=mouse.y;parent.scrubbing=false;scrubDelay.restart()}
+                        onPositionChanged:mouse=>{
+                            if(!pressed)return
+                            if(Math.hypot(mouse.x-parent.startX,mouse.y-parent.startY)>=6)parent.scrubbing=true
+                            if(!parent.scrubbing)return
+                            let dx=(mouse.x-parent.lastX)/prefs.scrubPixels
+                            let verticalStep=Math.max(18,prefs.scrubPixels*3)
+                            let dy=(mouse.y-parent.lastY)/verticalStep
+                            if(Math.abs(dy)>=1&&Math.abs(dy)>Math.abs(dx)){
+                                let step=Math.trunc(dy);mousyst.scrubVertical(step);parent.lastY+=step*verticalStep;parent.lastX=mouse.x
+                            }else if(Math.abs(dx)>=1){
+                                let step=Math.trunc(dx);mousyst.scrub(step);parent.lastX+=step*prefs.scrubPixels;parent.lastY=mouse.y
+                            }
+                        }
                         onReleased:{scrubDelay.stop();if(!parent.scrubbing)mousyst.key(' ')}onCanceled:scrubDelay.stop()
                     }
                     Timer {id:scrubDelay;interval:250;onTriggered:parent.scrubbing=true}
