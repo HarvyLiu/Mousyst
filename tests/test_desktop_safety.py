@@ -128,3 +128,44 @@ def test_shift_display_and_output_agree(controller, base, expected):
 
 def test_empty_caret_is_not_ownership():
     assert not matches_owner(field(caret=None), field(caret=None))
+
+
+def test_swipe_in_editable_control_without_caret_inserts_without_replacement(
+    controller,
+):
+    c = controller
+    target = dict(field(prefix=None, caret=None), editable=True)
+    c.pending_field = target
+    c.snapshot = lambda: target
+    c.receive(c.generation, c.editor.revision, ["world", "word"], 20)
+    assert c.output.events == [("text", ch) for ch in "world"] + [("text", "SPACE")]
+    assert c.owner is None and c.editor.span is None and not c.candidates
+    c.key(".")
+    assert c.output.events[-1] == ("text", ".")
+    assert all(event[0] != "key" for event in c.output.events)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"identity": (2,)},
+        {"hwnd": 43},
+        {"password": True},
+        {"editable": False},
+        {"caret": 2, "prefix": "hi"},
+    ],
+)
+def test_compatibility_swipe_rejects_changed_or_uneditable_target(controller, change):
+    c = controller
+    c.pending_field = dict(field(prefix=None, caret=None), editable=True)
+    c.snapshot = lambda: dict(c.pending_field, **change)
+    c.receive(c.generation, c.editor.revision, ["world"], 20)
+    assert c.output.events == []
+
+
+def test_swipe_rechecks_password_after_leaving_password_field(controller):
+    c = controller
+    c.password = True  # Cached at summon, but focus has since changed.
+    c.recognizer = None
+    c.stroke([{"x": 0, "y": 0}, {"x": 1, "y": 1}])
+    assert c.pending_field == field()

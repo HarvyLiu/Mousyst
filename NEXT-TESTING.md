@@ -14,6 +14,14 @@ Quit the original Mousyst tray instance temporarily before testing NEXT, so two 
 
 Development settings are written under this version's `build/development-settings`, not the homework's `%APPDATA%/Mousyst` settings. Exact clicks remain available when a field cannot be verified; swipe results are rejected rather than committed to an unverifiable destination.
 
+### Compatibility and color-picker update · November 15
+
+The first checkpoint required caret information even for inserting a swipe word. Some editable controls expose their identity but no caret API, so swipes were rejected although clicks worked. The updated build accepts insertion when the same non-password editable control is still focused. It does not enable alternatives, word Undo, or automatic-space deletion without verified caret/text ownership. Completely unknown or changed destinations still reject delayed results. Password state is rechecked per stroke instead of blocking input based on the field used when the keyboard opened.
+
+The system color dialog is replaced with a matching dark panel: presets, a preview, hex input, hue/saturation/brightness sliders, and explicit Apply/Cancel. There is no draggable color square. Draft changes are discarded on Cancel or Escape.
+
+Test the affected apps again, especially fields where clicks previously worked but swipes did not. Also test switching fields during recognition, clicking punctuation after an insertion, changing colors repeatedly, cancelling, and reopening the picker. If a field remains unsupported, report the app and type of text box; this is not a claim of universal compatibility.
+
 ## Implemented in this checkpoint
 
 - Check field/caret/expected prefix before deleting a word's automatic space.
@@ -36,10 +44,11 @@ Development settings are written under this version's `build/development-setting
 
 ## Verification recorded
 
-- 51 unit tests passed, including fake-output regressions (no live application injection).
+- 58 unit tests passed, including fake-output regressions for editable controls without caret APIs, changed destinations, and stale password state (no live application injection).
 - Python lint passed.
 - Source offscreen UI smoke passed.
 - Packaged offscreen UI smoke passed (no live hooks or external typing).
+- Color-picker UI checks cover preview without saving, Cancel, Apply, and hue-slider changes. Its rendered layout was visually checked.
 
 ## Still pending
 

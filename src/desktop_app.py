@@ -23,7 +23,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from accessibility import FocusObserver
 from desktop import DesktopInput, MiddleButtonHook
-from input_session import matches_owner
+from input_session import accepts_insertion, matches_owner
 from keymap import shifted_text
 from practice import Controller
 from settings import DEFAULTS, Settings
@@ -98,9 +98,9 @@ class DesktopController(Controller):
                     weights[word[len(prefix)]] += 1 / (rank + 1)
         return min(
             candidates[:2],
-            key=lambda c: (CENTERS[c][0] - x) ** 2
-            + (CENTERS[c][1] - y) ** 2
-            - 0.02 * weights[c],
+            key=lambda c: (
+                (CENTERS[c][0] - x) ** 2 + (CENTERS[c][1] - y) ** 2 - 0.02 * weights[c]
+            ),
         )
 
     @Slot(str)
@@ -253,7 +253,11 @@ class DesktopController(Controller):
         text = shifted_text(value) if self.shift else value
         current = self.snapshot() if self.output else None
         sensitive = self.output and (not current or current.get("password", False))
-        if self.output and self.editor.auto_space and not matches_owner(self.owner, current):
+        if (
+            self.output
+            and self.editor.auto_space
+            and not matches_owner(self.owner, current)
+        ):
             # A local trailing space is not permission to delete external text.
             self.editor.external("")
         before = self.editor.text
@@ -296,7 +300,7 @@ class DesktopController(Controller):
             return
         before = self.snapshot()
         pending = getattr(self, "pending_field", None)
-        if self.output and not matches_owner(pending, before):
+        if self.output and not accepts_insertion(pending, before):
             self.cancel()
             self.status = "Field changed or could not be verified. Use exact clicks."
             self.changed.emit()
@@ -316,21 +320,25 @@ class DesktopController(Controller):
             self.owner["caret"] = before["caret"] + len(addition)
         elif self.output:
             self.candidates = []
+            self.editor.external("")
             self.status = "Word entered. Alternatives unavailable in this text control."
         self.changed.emit()
 
     @Slot("QVariantList")
     def stroke(self, points):
-        if getattr(self, "password", False):
-            self.status = "Password field: use exact clicks; prediction is disabled."
-            self.changed.emit()
-            return
         self.pending_field = self.snapshot()
-        if self.output and (not self.pending_field or self.pending_field.get("password", False)):
+        if self.output and (
+            not self.pending_field or self.pending_field.get("password", False)
+        ):
             self.cancel()
-            self.status = "Field could not be verified for swipe typing. Use exact clicks."
+            self.status = (
+                "Field could not be verified for swipe typing. Use exact clicks."
+            )
             self.changed.emit()
             return
+        if self.output and not matches_owner(self.owner, self.pending_field):
+            self.editor.external("")
+            self.owner = None
         super().stroke(points)
 
     @Slot(int)
@@ -448,10 +456,22 @@ def main():
     development = args.development or Path(sys.executable).stem.lower() == "mousystnext"
     if development:
         import os
-        os.environ["MOUSYST_SETTINGS_DIR"] = str(Path(__file__).resolve().parents[1] / "build/development-settings")
+
+        os.environ["MOUSYST_SETTINGS_DIR"] = str(
+            Path(__file__).resolve().parents[1] / "build/development-settings"
+        )
     instance_name = "MousystNext" if development else "MousystDesktop"
     QQuickStyle.setStyle("Basic")
     app = QApplication(sys.argv[:1])
+    if args.smoke_test:
+        # Offscreen Qt does not discover system fonts on some Windows runners.
+        import os
+
+        from PySide6.QtGui import QFontDatabase
+
+        QFontDatabase.addApplicationFont(
+            str(Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts/segoeui.ttf")
+        )
     app.setApplicationName("Mousyst")
     app.setWindowIcon(app_icon())
     palette = QPalette()
@@ -580,7 +600,11 @@ def main():
     menu.addAction("Quit", app.quit)
     tray = QSystemTrayIcon(app.windowIcon(), app)
     tray.setContextMenu(menu)
-    tray.setToolTip("Mousyst NEXT · testing branch" if args.development else "Mousyst · middle-click to type")
+    tray.setToolTip(
+        "Mousyst NEXT · testing branch"
+        if development
+        else "Mousyst · middle-click to type"
+    )
     tray.activated.connect(
         lambda reason: show() if reason == QSystemTrayIcon.Trigger else None
     )
@@ -588,11 +612,11 @@ def main():
     hook = MiddleButtonHook()
     hook.toggled.connect(lambda hwnd: hide() if window.isVisible() else show(int(hwnd)))
     hook.failed.connect(
-        lambda message: setattr(controller, "status", message)
-        or controller.changed.emit()
+        lambda message: (
+            setattr(controller, "status", message) or controller.changed.emit()
+        )
     )
     if not args.smoke_test:
-
         hook.start()
         app.aboutToQuit.connect(hook.stop)
         app.aboutToQuit.connect(controller.observer.stop)
@@ -677,9 +701,9 @@ def main():
                 controller.cancel()
                 controller.editor.external("")
                 QTest.qWait(300)
-                assert not board.property(
-                    "visualPoints"
-                ).toVariant(), "Glide trail did not fade"
+                assert not board.property("visualPoints").toVariant(), (
+                    "Glide trail did not fade"
+                )
                 QTest.mouseClick(window, Qt.RightButton, Qt.NoModifier, point)
                 assert controller.editor.text == "1", controller.editor.text
                 QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, point)
@@ -728,9 +752,9 @@ def main():
                     number_board.mapToScene(digit_point).toPoint(),
                 )
                 QTest.qWait(25)
-                assert (
-                    controller.editor.text == before + "1"
-                ), "Number layer did not type digit"
+                assert controller.editor.text == before + "1", (
+                    "Number layer did not type digit"
+                )
                 click_item(format_toggle)
                 assert (
                     window.height(),
@@ -765,6 +789,45 @@ def main():
 
                 settings_window = window.findChild(QQuickWindow, "desktopSettings")
                 settings_window.grabWindow().save(str(folder / "settings.png"))
+
+                def settings_click(name):
+                    def find_item(parent):
+                        if parent.objectName() == name:
+                            return parent
+                        for child in parent.childItems():
+                            found = find_item(child)
+                            if found is not None:
+                                return found
+                        return None
+
+                    item = find_item(settings_window.contentItem())
+                    assert item is not None, name
+                    QTest.mouseClick(
+                        settings_window,
+                        Qt.LeftButton,
+                        Qt.NoModifier,
+                        item.mapToScene(
+                            QPointF(item.width() / 2, item.height() / 2)
+                        ).toPoint(),
+                    )
+                    QTest.qWait(50)
+
+                original_accent = controller.preferences["accent"]
+                settings_click("settingsAccentColor")
+                settings_click("colorSwatch#bfe8d5")
+                assert controller.preferences["accent"] == original_accent
+                settings_window.grabWindow().save(str(folder / "color-picker.png"))
+                settings_click("settingsColorCancel")
+                assert controller.preferences["accent"] == original_accent
+                settings_click("settingsAccentColor")
+                settings_click("colorSwatch#bfe8d5")
+                settings_click("settingsColorApply")
+                assert controller.preferences["accent"] == "#bfe8d5"
+                settings_click("settingsAccentColor")
+                settings_click("colorHue")
+                settings_click("settingsColorApply")
+                assert controller.preferences["accent"] != "#bfe8d5"
+                controller.setPreference("accent", original_accent)
                 window.setProperty("settingsOpen", False)
                 (folder / "smoke.json").write_text(
                     json.dumps(
@@ -780,6 +843,7 @@ def main():
                                 "bounded crossing trail and fade-out",
                                 "fixed suggestion area and Enter position after Backspace",
                                 "ABC/numbers replace keys without expansion; digit entry; numpad switch",
+                                "in-panel color picker: preview, Cancel, Apply, hue slider",
                             ],
                         }
                     )
