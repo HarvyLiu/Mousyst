@@ -9,6 +9,7 @@ Window {
     visible:false
     property bool settingsOpen:false
     property bool numbers:false
+    readonly property point spaceCenter:spaceBar.mapToItem(root.contentItem,spaceBar.width/2,spaceBar.height/2)
     property var prefs:mousyst.preferences
     property real pitch:54*prefs.scale
     width:14*pitch+24
@@ -60,12 +61,14 @@ Window {
             }
             RowLayout {
                 id:suggestions;objectName:'desktopSuggestions';Layout.minimumHeight:34;Layout.preferredHeight:34;Layout.maximumHeight:34
-                property int candidateIndex:0
+                property int candidateIndex:mousyst.selectedSuggestion
+                property int session:mousyst.suggestionSession
                 property real wheelDelta:0
-                Repeater {model:3;Key {required property int index;direct:false;text:mousyst.suggestions[index]||'';enabled:index<mousyst.suggestions.length;opacity:enabled?1:.25;checked:enabled&&index===suggestions.candidateIndex;Layout.fillWidth:true;implicitHeight:34;onReleased:{suggestions.candidateIndex=index;mousyst.alternative(index)}}}
+                onSessionChanged:wheelDelta=0
+                Repeater {model:3;Key {required property int index;objectName:'desktopSuggestion'+index;direct:false;text:mousyst.suggestions[index]||'';enabled:index<mousyst.suggestions.length;opacity:enabled?1:.25;checked:enabled&&index===suggestions.candidateIndex;Layout.fillWidth:true;implicitHeight:34;onReleased:mousyst.alternative(index)}}
                 Key {text:'';iconName:'undo';direct:false;enabled:mousyst.suggestions.length>0;opacity:enabled?1:.25;implicitHeight:34;onReleased:mousyst.undoWord()}
                 MouseArea {anchors.fill:parent;acceptedButtons:Qt.NoButton
-                    onWheel:wheel=>{if(mousyst.suggestions.length===0){wheel.accepted=false;return}suggestions.wheelDelta+=wheel.angleDelta.y;if(Math.abs(suggestions.wheelDelta)>=120){suggestions.candidateIndex=Math.max(0,Math.min(mousyst.suggestions.length-1,suggestions.candidateIndex+(suggestions.wheelDelta<0?1:-1)));suggestions.wheelDelta=0;mousyst.alternative(suggestions.candidateIndex)}wheel.accepted=true}
+                    onWheel:wheel=>{if(mousyst.suggestions.length===0){suggestions.wheelDelta=0;wheel.accepted=false;return}suggestions.wheelDelta+=wheel.angleDelta.y;let steps=Math.trunc(suggestions.wheelDelta/120);if(steps){suggestions.wheelDelta-=steps*120;mousyst.cycleSuggestion(-steps)}wheel.accepted=true}
                 }
             }
             RowLayout {visible:prefs.layout==='Full';spacing:5;Repeater {model:12;Key {required property int index;text:'F'+(index+1);Layout.fillWidth:true}}}
@@ -108,17 +111,17 @@ Window {
                     anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;preventStealing:true
                     onPressed:mouse=>{let x=mouse.x/root.pitch-1,y=mouse.y/root.pitch;let exact=board.letterAt(x,y);if(!exact){mouse.accepted=false;return}board.first=mouse.button===Qt.RightButton?exact:mousyst.aim(x,y);board.clearVisual();board.tracking=true;board.swiping=false;board.path=[{x:x,y:y}];if(mouse.button===Qt.LeftButton)mousyst.hold(board.first)}
                     onPositionChanged:mouse=>{if(!board.tracking||!(pressedButtons&Qt.LeftButton))return;if(mouse.x<0||mouse.y<0||mouse.x>=width||mouse.y>=height){board.abort();return}let p={x:mouse.x/root.pitch-1,y:mouse.y/root.pitch};if(!mousyst.isRepeating&&Math.hypot(p.x-board.path[0].x,p.y-board.path[0].y)>1/3&&mousyst.activeModifiers.length===0){board.swiping=true;mousyst.releaseHold()}board.path.push(p);if(board.swiping)board.paintPoint(p)}
-                    onReleased:mouse=>{if(!board.tracking)return;let repeated=mousyst.isRepeating;mousyst.releaseHold();if(mouse.x>=0&&mouse.y>=0&&mouse.x<width&&mouse.y<height){if(mouse.button===Qt.RightButton&&board.letterAt(mouse.x/root.pitch-1,mouse.y/root.pitch)===board.first)mousyst.secondary(board.first);else if(mouse.button===Qt.LeftButton&&board.swiping){board.path.push({x:mouse.x/root.pitch-1,y:mouse.y/root.pitch});suggestions.candidateIndex=0;mousyst.stroke(board.path)}else if(mouse.button===Qt.LeftButton&&!repeated)mousyst.key(board.first)}board.abort()}
+                    onReleased:mouse=>{if(!board.tracking)return;let repeated=mousyst.isRepeating;mousyst.releaseHold();if(mouse.x>=0&&mouse.y>=0&&mouse.x<width&&mouse.y<height){if(mouse.button===Qt.RightButton&&board.letterAt(mouse.x/root.pitch-1,mouse.y/root.pitch)===board.first)mousyst.secondary(board.first);else if(mouse.button===Qt.LeftButton&&board.swiping){board.path.push({x:mouse.x/root.pitch-1,y:mouse.y/root.pitch});mousyst.stroke(board.path)}else if(mouse.button===Qt.LeftButton&&!repeated)mousyst.key(board.first)}board.abort()}
                     onCanceled:board.abort()
                 }
                 Key {x:0;y:0;width:root.pitch-5;text:'Esc';value:'Escape'}
                 Key {objectName:'desktopBackspace';x:11*root.pitch;y:0;width:3*root.pitch-5;text:'';iconName:'backspace';value:'Back';repeatable:true}
                 Key {x:0;y:root.pitch;width:1.5*root.pitch-5;text:'Tab'}
-                Key {x:10.5*root.pitch;y:root.pitch;text:';';hint:':'}
-                Key {x:11.5*root.pitch;y:root.pitch;text:"'";hint:'"'}
+                Key {x:10.5*root.pitch;y:root.pitch;text:mousyst.shifted?':':';';value:';';hint:':'}
+                Key {x:11.5*root.pitch;y:root.pitch;text:mousyst.shifted?'"':"'";value:"'";hint:'"'}
                 Key {objectName:'desktopEnter';x:12.5*root.pitch;y:root.pitch;width:1.5*root.pitch-5;text:'';iconName:'enter';value:'Enter'}
                 Key {x:0;y:2*root.pitch;width:2.5*root.pitch-5;text:'';iconName:'shift';value:'Shift';checked:mousyst.shifted}
-                Repeater {model:[',','.','/'];Key {required property string modelData;required property int index;x:(9.5+index)*root.pitch;y:2*root.pitch;text:modelData;hint:['<','>','?'][index]}}
+                Repeater {model:[',','.','/'];Key {required property string modelData;required property int index;x:(9.5+index)*root.pitch;y:2*root.pitch;text:mousyst.shifted?mousyst.shiftLabel(modelData):modelData;value:modelData;hint:['<','>','?'][index]}}
                 Key {x:12.5*root.pitch;y:2*root.pitch;width:1.5*root.pitch-5;text:'';iconName:'shift';value:'Shift';checked:mousyst.shifted}
             }
             Item {
@@ -127,15 +130,19 @@ Window {
                 property bool pad:prefs.numberFormat==='Numpad'
                 Repeater {
                     model:numberBoard.pad?['7','8','9','/','4','5','6','*','1','2','3','-','0','.','=','+']:['1','2','3','4','5','6','7','8','9','0','+','-','*','/','=','(',')','[',']','<','>','!','?','@','#','$','%','&',':',';','"',"'",'\\','_','^']
-                    Key {required property string modelData;required property int index;text:modelData;repeatable:true
-                        x:(numberBoard.pad?3+index%4*2:index%14)*root.pitch
-                        y:(numberBoard.pad?Math.floor(index/4)*.75:Math.floor(index/14))*root.pitch
+                    Key {required property string modelData;required property int index;text:mousyst.shifted?mousyst.shiftLabel(modelData):modelData;value:modelData;repeatable:true
+                        x:(numberBoard.pad?1+index%4*2:index%12)*root.pitch
+                        y:(numberBoard.pad?Math.floor(index/4)*.75:Math.floor(index/12))*root.pitch
                         width:(numberBoard.pad?2:1)*root.pitch-5
                         height:(numberBoard.pad?.75:1)*root.pitch-5
                     }
                 }
-                Key {objectName:'numberFormatToggle';direct:false;x:12*root.pitch;y:2*root.pitch;width:2*root.pitch-5
-                    text:numberBoard.pad?'Symbols':'Numpad'
+                Key {x:12*root.pitch;y:0;width:2*root.pitch-5;text:'';iconName:'backspace';value:'Back';repeatable:true}
+                Key {x:12*root.pitch;y:root.pitch;width:2*root.pitch-5;text:'';iconName:'enter';value:'Enter'}
+                Key {x:12*root.pitch;y:2*root.pitch;width:2*root.pitch-5;text:'Esc';value:'Escape'}
+                Key {x:9*root.pitch;y:2*root.pitch;width:root.pitch-5;text:'';iconName:'shift';value:'Shift';checked:mousyst.shifted;visible:numberBoard.pad}
+                Key {objectName:'numberFormatToggle';direct:false;x:(numberBoard.pad?10:11)*root.pitch;y:2*root.pitch;width:(numberBoard.pad?2:1)*root.pitch-5
+                    text:numberBoard.pad?'Symbols':'Pad'
                     onReleased:mousyst.setPreference('numberFormat',numberBoard.pad?'Rows':'Numpad')
                 }
             }
@@ -144,11 +151,23 @@ Window {
                 Key {text:'Ctrl';checked:mousyst.activeModifiers.indexOf('Ctrl')>=0}
                 Key {text:'';iconName:'windows';value:'Win';checked:mousyst.activeModifiers.indexOf('Win')>=0}
                 Key {text:'Alt';checked:mousyst.activeModifiers.indexOf('Alt')>=0}
-                Key {text:'';value:' ';Layout.fillWidth:true
-                    property real startX:0;property real lastX:0;property bool scrubbing:false
+                Key {id:spaceBar;objectName:'desktopSpace';text:'';value:' ';Layout.fillWidth:true
+                    property real startX:0;property real startY:0;property real lastX:0;property real lastY:0;property bool scrubbing:false
                     MouseArea {anchors.fill:parent;preventStealing:true
-                        onPressed:mouse=>{parent.startX=mouse.x;parent.lastX=mouse.x;parent.scrubbing=false;scrubDelay.restart()}
-                        onPositionChanged:mouse=>{if(!pressed)return;if(Math.abs(mouse.x-parent.startX)>=6)parent.scrubbing=true;if(parent.scrubbing){let step=Math.trunc((mouse.x-parent.lastX)/prefs.scrubPixels);if(step){mousyst.scrub(step);parent.lastX+=step*prefs.scrubPixels}}}
+                        onPressed:mouse=>{parent.startX=mouse.x;parent.startY=mouse.y;parent.lastX=mouse.x;parent.lastY=mouse.y;parent.scrubbing=false;scrubDelay.restart()}
+                        onPositionChanged:mouse=>{
+                            if(!pressed)return
+                            if(Math.hypot(mouse.x-parent.startX,mouse.y-parent.startY)>=6)parent.scrubbing=true
+                            if(!parent.scrubbing)return
+                            let dx=(mouse.x-parent.lastX)/prefs.scrubPixels
+                            let verticalStep=Math.max(18,prefs.scrubPixels*3)
+                            let dy=(mouse.y-parent.lastY)/verticalStep
+                            if(Math.abs(dy)>=1&&Math.abs(dy)>Math.abs(dx)){
+                                let step=Math.trunc(dy);mousyst.scrubVertical(step);parent.lastY+=step*verticalStep;parent.lastX=mouse.x
+                            }else if(Math.abs(dx)>=1){
+                                let step=Math.trunc(dx);mousyst.scrub(step);parent.lastX+=step*prefs.scrubPixels;parent.lastY=mouse.y
+                            }
+                        }
                         onReleased:{scrubDelay.stop();if(!parent.scrubbing)mousyst.key(' ')}onCanceled:scrubDelay.stop()
                     }
                     Timer {id:scrubDelay;interval:250;onTriggered:parent.scrubbing=true}

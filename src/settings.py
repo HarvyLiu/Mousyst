@@ -72,9 +72,10 @@ def validate(value: dict) -> dict:
 
 class Settings:
     def __init__(self, path: Path | None = None):
-        self.path = (
-            path
-            or Path(os.environ.get("APPDATA", str(Path.home())))
+        self.path = path or (
+            Path(os.environ["MOUSYST_SETTINGS_DIR"]) / "settings.json"
+            if os.environ.get("MOUSYST_SETTINGS_DIR")
+            else Path(os.environ.get("APPDATA", str(Path.home())))
             / "Mousyst/settings.json"
         )
         self.value = validate({})

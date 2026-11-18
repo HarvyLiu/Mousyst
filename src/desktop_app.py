@@ -23,6 +23,8 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from accessibility import FocusObserver
 from desktop import DesktopInput, MiddleButtonHook
+from input_session import accepts_insertion, matches_owner
+from keymap import shifted_text
 from practice import Controller
 from settings import DEFAULTS, Settings
 from tray import app_icon
@@ -41,6 +43,7 @@ class DesktopController(Controller):
         self.output = None if smoke else DesktopInput()
         self.observer = None if smoke else FocusObserver()
         self.owner = None
+        self.selected_candidate = 0
         self.current_field = None
         self.suppressed = None
         self.repeat_key = ""
@@ -60,6 +63,27 @@ class DesktopController(Controller):
     @Property(bool, notify=desktopChanged)
     def isRepeating(self):
         return self.repeating
+
+    @Property(int, notify=desktopChanged)
+    def selectedSuggestion(self):
+        return self.selected_candidate if self.candidates else 0
+
+    @Property(int, notify=desktopChanged)
+    def suggestionSession(self):
+        return self.generation
+
+    @Slot(int)
+    def cycleSuggestion(self, steps):
+        if self.candidates:
+            index = max(
+                0, min(len(self.candidates) - 1, self.selectedSuggestion + steps)
+            )
+            if index != self.selectedSuggestion:
+                self.alternative(index)
+
+    @Slot(str, result=str)
+    def shiftLabel(self, value):
+        return shifted_text(value)
 
     @Slot(float, float, result=str)
     def aim(self, x, y):
@@ -92,9 +116,9 @@ class DesktopController(Controller):
                     weights[word[len(prefix)]] += 1 / (rank + 1)
         return min(
             candidates[:2],
-            key=lambda c: (CENTERS[c][0] - x) ** 2
-            + (CENTERS[c][1] - y) ** 2
-            - 0.02 * weights[c],
+            key=lambda c: (
+                (CENTERS[c][0] - x) ** 2 + (CENTERS[c][1] - y) ** 2 - 0.02 * weights[c]
+            ),
         )
 
     @Slot(str)
@@ -183,7 +207,6 @@ class DesktopController(Controller):
 
     @Slot(str)
     def key(self, value):
-        self.owner = None
         if value == "Shift":
             super().key(value)
             return
@@ -191,6 +214,8 @@ class DesktopController(Controller):
             self.modifier(value)
             return
         if self.modifiers:
+            self.owner = None
+            self.editor.external("")
             mods = list(self.activeModifiers) + (["Shift"] if self.shift else [])
             self.invalidate()
             if self.output:
@@ -226,8 +251,10 @@ class DesktopController(Controller):
             and value[1:].isdigit()
             or value.startswith("Num")
         ):
+            self.owner = None
             self.invalidate()
             if value == "Escape":
+                self.cancel()
                 self.hideRequested.emit()
                 return
             if self.output:
@@ -241,7 +268,16 @@ class DesktopController(Controller):
                 self.editor.external("")
             self.changed.emit()
             return
-        text = value.upper() if self.shift else value
+        text = shifted_text(value) if self.shift else value
+        current = self.snapshot() if self.output else None
+        sensitive = self.output and (not current or current.get("password", False))
+        if (
+            self.output
+            and self.editor.auto_space
+            and not matches_owner(self.owner, current)
+        ):
+            # A local trailing space is not permission to delete external text.
+            self.editor.external("")
         before = self.editor.text
         self.editor.insert(text)
         after = self.editor.text
@@ -253,14 +289,17 @@ class DesktopController(Controller):
                 self.send_text(text)
 
             if not self.dispatch(send):
-                self.editor.external(before)
+                self.editor.external("")
+        if sensitive:
+            self.editor.external("")
+        self.owner = None
         self.shift = False
         self.invalidate()
         self.changed.emit()
 
     @Slot(str)
     def secondary(self, letter):
-        self.cancel()
+        self.releaseHold()
         symbol = self.preferences["symbols"].get(letter, "")
         if symbol:
             self.key(symbol)
@@ -279,22 +318,16 @@ class DesktopController(Controller):
             return
         before = self.snapshot()
         pending = getattr(self, "pending_field", None)
-        if (
-            self.output
-            and pending
-            and (
-                not before
-                or before["identity"] != pending["identity"]
-                or before["prefix"] != pending["prefix"]
-                or before.get("caret") != pending.get("caret")
-            )
-        ):
+        if self.output and not accepts_insertion(pending, before):
             self.cancel()
+            self.status = "Field changed or could not be verified. Use exact clicks."
+            self.changed.emit()
             return
         if before and before["password"]:
             self.cancel()
             return
         old = self.editor.text
+        self.selected_candidate = 0
         super().receive(generation, revision, words, latency)
         addition = self.editor.text[len(old) :]
         if addition and not self.dispatch(lambda: self.send_text(addition)):
@@ -306,16 +339,25 @@ class DesktopController(Controller):
             self.owner["caret"] = before["caret"] + len(addition)
         elif self.output:
             self.candidates = []
+            self.editor.external("")
             self.status = "Word entered. Alternatives unavailable in this text control."
         self.changed.emit()
 
     @Slot("QVariantList")
     def stroke(self, points):
-        if getattr(self, "password", False):
-            self.status = "Password field: use exact clicks; prediction is disabled."
+        self.pending_field = self.snapshot()
+        if self.output and (
+            not self.pending_field or self.pending_field.get("password", False)
+        ):
+            self.cancel()
+            self.status = (
+                "Field could not be verified for swipe typing. Use exact clicks."
+            )
             self.changed.emit()
             return
-        self.pending_field = self.snapshot()
+        if self.output and not matches_owner(self.owner, self.pending_field):
+            self.editor.external("")
+            self.owner = None
         super().stroke(points)
 
     @Slot(int)
@@ -323,13 +365,7 @@ class DesktopController(Controller):
         if not 0 <= index < len(self.candidates):
             return
         current = self.snapshot()
-        if self.output and (
-            not self.owner
-            or not current
-            or current["identity"] != self.owner["identity"]
-            or current["prefix"] != self.owner["prefix"]
-            or current.get("caret") != self.owner.get("caret")
-        ):
+        if self.output and not matches_owner(self.owner, current):
             self.owner = None
             self.invalidate()
             self.status = "Caret or field changed; alternatives cleared."
@@ -351,6 +387,7 @@ class DesktopController(Controller):
 
         if self.dispatch(replace):
             self.editor.replace(self.candidates[index])
+            self.selected_candidate = index
             if self.owner:
                 self.owner["prefix"] = (self.owner["prefix"][: -len(old)] + new)[-512:]
                 self.owner["caret"] += len(new) - len(old)
@@ -361,20 +398,15 @@ class DesktopController(Controller):
         if self.editor.span is None:
             return
         current = self.snapshot()
-        if self.output and (
-            not current
-            or not self.owner
-            or current["identity"] != self.owner["identity"]
-            or current["prefix"] != self.owner["prefix"]
-            or current.get("caret") != self.owner.get("caret")
-        ):
+        if self.output and not matches_owner(self.owner, current):
             self.cancel()
             return
         start, end = self.editor.span
-        if self.output:
-            self.dispatch(
-                lambda: [self.output.chord("Back", []) for _ in range(end - start)]
-            )
+        if self.output and not self.dispatch(
+            lambda: [self.output.chord("Back", []) for _ in range(end - start)]
+        ):
+            self.editor.external("")
+            return
         self.editor.undo()
         self.owner = None
         self.invalidate()
@@ -410,11 +442,19 @@ class DesktopController(Controller):
         for _ in range(abs(steps)):
             self.key("Right" if steps > 0 else "Left")
 
+    @Slot(int)
+    def scrubVertical(self, steps):
+        self.releaseHold()
+        for _ in range(abs(steps)):
+            self.key("Down" if steps > 0 else "Up")
+
     @Slot()
     def cancel(self):
         if hasattr(self, "repeat_timer"):
             self.releaseHold()
         self.owner = None
+        self.pending_field = None
+        self.editor.external("")
         super().cancel()
         self.status = (
             "Middle-click to show or hide · Right-click a letter for its symbol"
@@ -424,10 +464,28 @@ class DesktopController(Controller):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke-test", action="store_true")
+    parser.add_argument("--development", action="store_true")
     parser.add_argument("--test-layout-report", type=Path)
     args = parser.parse_args()
+    development = args.development or Path(sys.executable).stem.lower() == "mousystnext"
+    if development:
+        import os
+
+        os.environ["MOUSYST_SETTINGS_DIR"] = str(
+            Path(__file__).resolve().parents[1] / "build/development-settings"
+        )
+    instance_name = "MousystNext" if development else "MousystDesktop"
     QQuickStyle.setStyle("Basic")
     app = QApplication(sys.argv[:1])
+    if args.smoke_test:
+        # Offscreen Qt does not discover system fonts on some Windows runners.
+        import os
+
+        from PySide6.QtGui import QFontDatabase
+
+        QFontDatabase.addApplicationFont(
+            str(Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts/segoeui.ttf")
+        )
     app.setApplicationName("Mousyst")
     app.setWindowIcon(app_icon())
     palette = QPalette()
@@ -448,12 +506,12 @@ def main():
     lock = QLockFile(
         str(
             Path(QStandardPaths.writableLocation(QStandardPaths.TempLocation))
-            / "mousyst-desktop.lock"
+            / ("mousyst-next.lock" if development else "mousyst-desktop.lock")
         )
     )
     if not args.smoke_test and not lock.tryLock(100):
         socket = QLocalSocket()
-        socket.connectToServer("MousystDesktop")
+        socket.connectToServer(instance_name)
         if socket.waitForConnected(300):
             socket.write(b"show")
             socket.waitForBytesWritten(300)
@@ -540,8 +598,8 @@ def main():
     controller.hideRequested.connect(hide)
     server = QLocalServer()
     if not args.smoke_test:
-        QLocalServer.removeServer("MousystDesktop")
-        server.listen("MousystDesktop")
+        QLocalServer.removeServer(instance_name)
+        server.listen(instance_name)
 
         def activate_existing():
             connection = server.nextPendingConnection()
@@ -556,7 +614,11 @@ def main():
     menu.addAction("Quit", app.quit)
     tray = QSystemTrayIcon(app.windowIcon(), app)
     tray.setContextMenu(menu)
-    tray.setToolTip("Mousyst · middle-click to type")
+    tray.setToolTip(
+        "Mousyst NEXT · testing branch"
+        if development
+        else "Mousyst · middle-click to type"
+    )
     tray.activated.connect(
         lambda reason: show() if reason == QSystemTrayIcon.Trigger else None
     )
@@ -564,11 +626,11 @@ def main():
     hook = MiddleButtonHook()
     hook.toggled.connect(lambda hwnd: hide() if window.isVisible() else show(int(hwnd)))
     hook.failed.connect(
-        lambda message: setattr(controller, "status", message)
-        or controller.changed.emit()
+        lambda message: (
+            setattr(controller, "status", message) or controller.changed.emit()
+        )
     )
     if not args.smoke_test:
-
         hook.start()
         app.aboutToQuit.connect(hook.stop)
         app.aboutToQuit.connect(controller.observer.stop)
@@ -590,6 +652,7 @@ def main():
 
         def smoke():
             from PySide6.QtCore import QPointF, Qt
+            from PySide6.QtGui import QWheelEvent
             from PySide6.QtQuick import QQuickItem
             from PySide6.QtTest import QTest
 
@@ -618,6 +681,92 @@ def main():
                         enter.mapToScene(QPointF(0, 0)),
                         window.height(),
                     ) == stable, "Suggestions moved the keyboard"
+                controller.editor.external("")
+                controller.receive(
+                    controller.generation,
+                    controller.editor.revision,
+                    ["hello", "help", "held"],
+                    20,
+                )
+                QTest.qWait(25)
+                suggestions = window.findChild(QQuickItem, "desktopSuggestions")
+                QTest.mouseClick(
+                    window,
+                    Qt.LeftButton,
+                    Qt.NoModifier,
+                    suggestions.mapToScene(
+                        QPointF(suggestions.width() / 2 - 15, 17)
+                    ).toPoint(),
+                )
+                QTest.qWait(25)
+                assert (
+                    controller.editor.text == "help "
+                    and controller.selectedSuggestion == 1
+                )
+                wheel_point = suggestions.mapToScene(
+                    QPointF(suggestions.width() / 2, 17)
+                )
+
+                def wheel(delta):
+                    event = QWheelEvent(
+                        wheel_point,
+                        QPointF(window.mapToGlobal(wheel_point.toPoint())),
+                        QPoint(),
+                        QPoint(0, delta),
+                        Qt.NoButton,
+                        Qt.NoModifier,
+                        Qt.NoScrollPhase,
+                        False,
+                    )
+                    QApplication.sendEvent(window, event)
+                    QTest.qWait(25)
+
+                wheel(-120)
+                assert (
+                    controller.editor.text == "held "
+                    and controller.selectedSuggestion == 2
+                )
+                wheel(240)
+                assert (
+                    controller.editor.text == "hello "
+                    and controller.selectedSuggestion == 0
+                )
+                wheel(-60)
+                assert suggestions.property("wheelDelta") == -60
+                controller.cancel()
+                controller.receive(
+                    controller.generation,
+                    controller.editor.revision,
+                    ["world", "word"],
+                    20,
+                )
+                QTest.qWait(25)
+                assert suggestions.property("wheelDelta") == 0
+                assert suggestions.property("candidateIndex") == 0
+                from types import SimpleNamespace
+
+                navigation = []
+                controller.output = SimpleNamespace(
+                    chord=lambda key, mods: navigation.append(("key", key)),
+                    send=lambda text: navigation.append(("text", text)),
+                )
+                space_point = window.property("spaceCenter").toPoint()
+                for dx, dy in [(-18, 0), (18, 0), (0, -26), (0, 26)]:
+                    QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, space_point)
+                    QTest.mouseMove(window, space_point + QPoint(dx, dy), 25)
+                    QTest.mouseRelease(
+                        window,
+                        Qt.LeftButton,
+                        Qt.NoModifier,
+                        space_point + QPoint(dx, dy),
+                    )
+                assert navigation == [
+                    ("key", k) for k in ("Left", "Left", "Right", "Right", "Up", "Down")
+                ], navigation
+                QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, space_point)
+                assert navigation[-1] == ("text", "SPACE")
+                controller.output = None
+                controller.cancel()
                 controller.editor.external("hello ")
                 QTest.mouseClick(
                     window,
@@ -653,9 +802,9 @@ def main():
                 controller.cancel()
                 controller.editor.external("")
                 QTest.qWait(300)
-                assert not board.property(
-                    "visualPoints"
-                ).toVariant(), "Glide trail did not fade"
+                assert not board.property("visualPoints").toVariant(), (
+                    "Glide trail did not fade"
+                )
                 QTest.mouseClick(window, Qt.RightButton, Qt.NoModifier, point)
                 assert controller.editor.text == "1", controller.editor.text
                 QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, point)
@@ -704,9 +853,9 @@ def main():
                     number_board.mapToScene(digit_point).toPoint(),
                 )
                 QTest.qWait(25)
-                assert (
-                    controller.editor.text == before + "1"
-                ), "Number layer did not type digit"
+                assert controller.editor.text == before + "1", (
+                    "Number layer did not type digit"
+                )
                 click_item(format_toggle)
                 assert (
                     window.height(),
@@ -741,6 +890,45 @@ def main():
 
                 settings_window = window.findChild(QQuickWindow, "desktopSettings")
                 settings_window.grabWindow().save(str(folder / "settings.png"))
+
+                def settings_click(name):
+                    def find_item(parent):
+                        if parent.objectName() == name:
+                            return parent
+                        for child in parent.childItems():
+                            found = find_item(child)
+                            if found is not None:
+                                return found
+                        return None
+
+                    item = find_item(settings_window.contentItem())
+                    assert item is not None, name
+                    QTest.mouseClick(
+                        settings_window,
+                        Qt.LeftButton,
+                        Qt.NoModifier,
+                        item.mapToScene(
+                            QPointF(item.width() / 2, item.height() / 2)
+                        ).toPoint(),
+                    )
+                    QTest.qWait(50)
+
+                original_accent = controller.preferences["accent"]
+                settings_click("settingsAccentColor")
+                settings_click("colorSwatch#bfe8d5")
+                assert controller.preferences["accent"] == original_accent
+                settings_window.grabWindow().save(str(folder / "color-picker.png"))
+                settings_click("settingsColorCancel")
+                assert controller.preferences["accent"] == original_accent
+                settings_click("settingsAccentColor")
+                settings_click("colorSwatch#bfe8d5")
+                settings_click("settingsColorApply")
+                assert controller.preferences["accent"] == "#bfe8d5"
+                settings_click("settingsAccentColor")
+                settings_click("colorHue")
+                settings_click("settingsColorApply")
+                assert controller.preferences["accent"] != "#bfe8d5"
+                controller.setPreference("accent", original_accent)
                 window.setProperty("settingsOpen", False)
                 (folder / "smoke.json").write_text(
                     json.dumps(
@@ -756,14 +944,25 @@ def main():
                                 "bounded crossing trail and fade-out",
                                 "fixed suggestion area and Enter position after Backspace",
                                 "ABC/numbers replace keys without expansion; digit entry; numpad switch",
+                                "in-panel color picker: preview, Cancel, Apply, hue slider",
+                                "suggestion click, wheel in both directions, multi-notch wheel, reset between words",
+                                "Spacebar caret scrub in four directions without stray spaces; tap inserts space",
                             ],
                         }
                     )
                 )
                 app.exit(0)
             except (AssertionError, AttributeError, RuntimeError) as exc:
+                import traceback
+
                 (folder / "smoke.json").write_text(
-                    json.dumps({"ok": False, "error": str(exc)})
+                    json.dumps(
+                        {
+                            "ok": False,
+                            "error": str(exc),
+                            "traceback": traceback.format_exc(),
+                        }
+                    )
                 )
                 app.exit(1)
 

@@ -1,6 +1,10 @@
-"""Practice-only editing, with revision-safe word replacement."""
+"""Revision-aware editing shared by practice and desktop typing."""
 
 from dataclasses import dataclass
+
+# These characters attach to the preceding word; operators and opening brackets
+# retain the word's separating space. Desktop deletion still requires ownership.
+ATTACHING_PUNCTUATION = frozenset(".,!?;:'\"%)]}…。，、；：！？％’”»")
 
 
 @dataclass
@@ -19,7 +23,11 @@ class Editor:
     def insert(self, text):
         if text == " " and self.auto_space:
             return
-        base = self.text[:-1] if self.auto_space and text in ".,!?;:)" else self.text
+        base = (
+            self.text[:-1]
+            if self.auto_space and text in ATTACHING_PUNCTUATION
+            else self.text
+        )
         self.external(base + text)
 
     def word(self, word):

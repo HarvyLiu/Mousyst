@@ -10,6 +10,25 @@ from PySide6.QtCore import QObject, Signal
 from desktop import user32
 
 
+def focused_input(api, uia):
+    """Chromium popups can report their host pane as the global focus.
+
+    Only descend inside that focused host, and only accept one genuinely focused
+    input. Never pick a textbox simply because it is present in a window.
+    """
+    element = api.GetFocusedElement()
+    if element.CurrentControlType not in (50032, 50033):
+        return element
+    condition = api.CreatePropertyCondition(uia.UIA_HasKeyboardFocusPropertyId, True)
+    matches = element.FindAll(uia.TreeScope_Descendants, condition)
+    inputs = []
+    for index in range(matches.Length):
+        candidate = matches.GetElement(index)
+        if candidate.CurrentControlType in (50003, 50004):
+            inputs.append(candidate)
+    return inputs[0] if len(inputs) == 1 else element
+
+
 class FocusObserver(QObject):
     focused = Signal(object)
     wake = Signal()
@@ -30,7 +49,7 @@ class FocusObserver(QObject):
         if self.api is None:
             comtypes.CoInitialize()
             self.api = CreateObject(uia.CUIAutomation, interface=uia.IUIAutomation)
-        element = self.api.GetFocusedElement()
+        element = focused_input(self.api, uia)
         if element.CurrentProcessId == os.getpid():
             return None
         identity = tuple(element.GetRuntimeId())
