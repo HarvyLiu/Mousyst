@@ -103,6 +103,7 @@ Item {
             }
         }
     }
+    ShelfSettings {id:shelfSettings}
     ColumnLayout {anchors.fill:parent;anchors.margins:24;spacing:18
         RowLayout {
             Rectangle {width:30;height:30;radius:5;color:'black';Text {anchors.centerIn:parent;text:'M';font.family:'Monotype Corsiva';font.italic:true;font.pixelSize:28;color:'white'}}
@@ -134,7 +135,49 @@ Item {
                 RowLayout {Caption {text:'Caret sensitivity'}Stepper {from:3;to:40;value:prefs.scrubPixels;onValueModified:mousyst.setPreference('scrubPixels',value)}}
                 Caption {text:'Drag Space left/right by character or up/down by line.';font.pixelSize:11;color:'#81818f';wrapMode:Text.Wrap}
                 RowLayout {Caption {text:'Right-click symbol'}Choice {id:letter;model:'qwertyuiopasdfghjklzxcvbnm'.split('');implicitWidth:74}TextField {text:prefs.symbols[letter.currentText]||'';maximumLength:1;implicitWidth:66;implicitHeight:36;color:'#eeeef1';horizontalAlignment:Text.AlignHCenter;onEditingFinished:if(text.length===1)mousyst.setSymbol(letter.currentText,text);background:Rectangle {radius:6;color:'#24242a';border.color:'#404048'}}}
+                Section {text:'SAVED TOOLS'}
+                RowLayout {
+                    Action {objectName:'manageFavorites';text:'Favorite shortcuts';onClicked:shelfSettings.manage('favorites')}
+                    Action {objectName:'managePhrases';text:'Saved phrases';onClicked:shelfSettings.manage('phrases')}
+                }
                 Section {text:'CONFIGURATION'}
+                Caption {text:'Personal swipe dictionary'}
+                Choice {
+                    id:wordList
+                    objectName:'personalWordList'
+                    Layout.fillWidth:true
+                    model:['Add a new word'].concat(Array.from(prefs.personalWords))
+                    onActivated:wordEditor.text = currentIndex > 0 ? currentText : ''
+                }
+                RowLayout {
+                    TextField {
+                        id:wordEditor
+                        objectName:'personalWordInput'
+                        Layout.fillWidth:true
+                        Layout.minimumWidth:72
+                        implicitHeight:36
+                        maximumLength:32
+                        placeholderText:'English spelling'
+                        color:'#eeeef1'
+                        placeholderTextColor:'#9b9ba7'
+                        background:Rectangle {radius:6;color:'#24242a';border.color:wordEditor.activeFocus?'#8b8b99':'#404048'}
+                        function saveWord() {
+                            if (text.trim() && mousyst.editPersonalWord(text, wordList.currentIndex - 1)) {
+                                clear()
+                                wordList.currentIndex = 0
+                            }
+                        }
+                        onAccepted:saveWord()
+                    }
+                    Action {objectName:'savePersonalWord';text:'Save';implicitWidth:62;enabled:wordEditor.text.trim().length>0;onClicked:wordEditor.saveWord()}
+                    Action {
+                        text:'Remove';implicitWidth:76;enabled:wordList.currentIndex>0
+                        onClicked:if (mousyst.editPersonalWord('',wordList.currentIndex-1)) {
+                            wordEditor.clear()
+                            wordList.currentIndex=0
+                        }
+                    }
+                }
                 RowLayout {Action {text:'Import…';onClicked:mousyst.importSettings()}Action {text:'Export…';onClicked:mousyst.exportSettings()}Action {text:'Reset defaults';onClicked:mousyst.resetSettings()}}
                 Caption {text:mousyst.message;font.pixelSize:11;color:'#81818f';wrapMode:Text.Wrap;Layout.topMargin:8}
             }

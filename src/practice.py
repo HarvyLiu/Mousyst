@@ -237,6 +237,9 @@ class Controller(QObject):
 
     @Slot("QVariantList")
     def stroke(self, points):
+        self.start_stroke(points, self.shift)
+
+    def start_stroke(self, points, uppercase):
         if self.mode != 1 or self.recognizer is None:
             return
         path = [(float(p["x"]), float(p["y"])) for p in points]
@@ -245,7 +248,6 @@ class Controller(QObject):
         self.entry()
         self.invalidate()
         generation, revision = self.generation, self.editor.revision
-        uppercase = self.shift
         self.busy = True
         started = time.perf_counter()
         if self.recording:
@@ -255,14 +257,14 @@ class Controller(QObject):
             try:
                 words = self.recognizer.recognize(path)
                 if uppercase:
-                    words = [w.capitalize() for w in words]
+                    words = [w[:1].upper() + w[1:] for w in words]
             except (ValueError, IndexError, KeyError):
                 words = []
             self.resultReady.emit(
                 generation, revision, words, (time.perf_counter() - started) * 1000
             )
 
-        self.executor.submit(work)
+        return self.executor.submit(work)
 
     @Slot(int, int, object, float)
     def receive(self, generation, revision, words, latency):

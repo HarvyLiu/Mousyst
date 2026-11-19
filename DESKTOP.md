@@ -11,8 +11,7 @@ Ctrl/Alt/Win/Shift, then a key to execute a real shortcut. Modifiers clear after
 the next key. Shortcuts operate in the focused target application, including
 Ctrl+C/V and Win+Shift+S. There is no local practice clipboard in this mode.
 
-Tap Space for a space; hold or drag it to move the caret horizontally. Arrow keys
-move vertically. Scroll over the candidate bar to replace the last word, or click
+Tap Space for a space. Drag left or right by character, or up and down by line. Scroll over the candidate bar to replace the last word, or click
 an alternative. Undo removes the last owned swipe. Alternatives are disabled when
 the destination does not expose a verifiable caret range through UI Automation.
 Moving the caret or changing the field invalidates replacement.
@@ -47,6 +46,17 @@ input instead of deliberately redirecting it. UI Automation can occasionally tim
 out; manual activation remains available. Do not rely on candidate replacement in
 controls where it is disabled. Full-layout sizing and mixed-DPI behavior need
 broader hardware checks. No user typing-speed advantage has been established.
+
+Open **Edit** for copy, paste, selection, word navigation and deletion.
+**Shortcuts** holds your favorite key combinations. **Phrases** inserts text
+you have saved, including multiple lines. Use Settings to manage or back up
+these collections. Some programs use Enter or Tab to submit or leave a field,
+so check how your destination handles multiline phrases.
+
+In Settings, choose **Add a new word** in the personal swipe dictionary, enter
+the spelling (for example, Mousyst), and choose **Save**. Choose an existing
+entry to change its capitalization or remove it. Config export includes the
+dictionary. Only the words you add explicitly are saved.
 
 No production text or clipboard history is saved. Inference and configuration
 are local. The bundled vocabulary includes its attribution and licenses.

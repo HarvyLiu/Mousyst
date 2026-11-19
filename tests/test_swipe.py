@@ -63,9 +63,22 @@ def test_stale_results_do_not_insert():
     c.activateKey("s", 0, 0, 0)
     assert c.shortcut_events[-1]["chord"] == "Win+Shift+S"
     assert not c.shifted and not c.activeModifiers
+
     c.modifier("Ctrl")
     c.cancel()
     assert not c.activeModifiers
     c.cancel()
     c.receive(generation, revision, ["world"], 10)
     assert c.text == "x"
+
+
+def test_personal_words_keep_spelling_and_restore_original_vocabulary():
+    r = Recognizer(["mouse", "most", "typing"])
+    r.set_personal_words(["Mousyst", "TyPing"])
+    path = [CENTERS[c] for c in "mousyst"]
+    assert r.recognize(path)[0] == "Mousyst"
+    matches = r.recognize([CENTERS[c] for c in "typing"])
+    assert matches[0] == "TyPing" and "typing" not in matches
+    r.set_personal_words([])
+    assert "Mousyst" not in r.recognize(path)
+    assert r.recognize([CENTERS[c] for c in "typing"])[0] == "typing"

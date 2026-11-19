@@ -9,6 +9,15 @@ Window {
     visible:false
     property bool settingsOpen:false
     property bool numbers:false
+    property string shelf:""
+    onSettingsOpenChanged: if (settingsOpen) shelf = ""
+    function toggleShelf(name) {
+        if (!mousyst.tools.ready()) return
+        board.abort()
+        board.clearVisual()
+        mousyst.cancel()
+        shelf = shelf === name ? "" : name
+    }
     readonly property point spaceCenter:spaceBar.mapToItem(root.contentItem,spaceBar.width/2,spaceBar.height/2)
     property var prefs:mousyst.preferences
     property real pitch:54*prefs.scale
@@ -18,7 +27,7 @@ Window {
     title:'Mousyst'
     flags:Qt.Tool|Qt.FramelessWindowHint|Qt.WindowStaysOnTopHint|Qt.WindowDoesNotAcceptFocus
     onClosing:event=>{event.accepted=false;mousyst.hideRequested()}
-    onVisibleChanged:if(!visible){board.abort();board.clearVisual();mousyst.cancel()}
+    onVisibleChanged:if(!visible){shelf="";board.abort();board.clearVisual();mousyst.cancel()}
     Rectangle {anchors.fill:parent;radius:12;color:prefs.background;border.color:'#37373c'}
     component Key:Button {
         id:key
@@ -56,7 +65,17 @@ Window {
                     onPositionChanged:mouse=>{if(pressed){root.x+=mouse.x-origin.x;root.y+=mouse.y-origin.y}}
                     Rectangle {anchors.centerIn:parent;width:36;height:3;radius:2;color:'#55555f'}
                 }
-                Key {direct:false;text:'';iconName:'settings';implicitHeight:27;implicitWidth:30;onReleased:{mousyst.cancel();root.settingsOpen=true}}
+                Repeater {
+                    model:[["edit","Edit"],["favorites","Shortcuts"],["phrases","Phrases"]]
+                    Key {
+                        required property var modelData
+                        objectName:"desktopShelf_" + modelData[0]
+                        direct:false; text:modelData[1]; checked:root.shelf===modelData[0]
+                        implicitHeight:27; implicitWidth:Math.max(42,modelData[1].length*9+12)
+                        onReleased:root.toggleShelf(modelData[0])
+                    }
+                }
+                Key {direct:false;text:'';iconName:'settings';implicitHeight:27;implicitWidth:30;onReleased:{root.shelf="";mousyst.cancel();root.settingsOpen=true}}
                 Key {direct:false;text:'';iconName:'close';implicitHeight:27;implicitWidth:30;onReleased:mousyst.hideRequested()}
             }
             RowLayout {
@@ -65,8 +84,10 @@ Window {
                 property int session:mousyst.suggestionSession
                 property real wheelDelta:0
                 onSessionChanged:wheelDelta=0
-                Repeater {model:3;Key {required property int index;objectName:'desktopSuggestion'+index;direct:false;text:mousyst.suggestions[index]||'';enabled:index<mousyst.suggestions.length;opacity:enabled?1:.25;checked:enabled&&index===suggestions.candidateIndex;Layout.fillWidth:true;implicitHeight:34;onReleased:mousyst.alternative(index)}}
-                Key {text:'';iconName:'undo';direct:false;enabled:mousyst.suggestions.length>0;opacity:enabled?1:.25;implicitHeight:34;onReleased:mousyst.undoWord()}
+                Repeater {model:3;Key {required property int index;objectName:'desktopSuggestion'+index;direct:false;visible:!mousyst.needsSpelling;text:mousyst.suggestions[index]||'';enabled:mousyst.pendingCount===0 && index<mousyst.suggestions.length;opacity:enabled?1:.25;checked:enabled&&index===suggestions.candidateIndex;Layout.fillWidth:true;implicitHeight:34;onReleased:mousyst.alternative(index)}}
+                Key {text:'';iconName:'undo';direct:false;visible:!mousyst.needsSpelling;enabled:mousyst.pendingCount===0 && mousyst.suggestions.length>0;opacity:enabled?1:.25;implicitHeight:34;onReleased:mousyst.undoWord()}
+                Key {visible:mousyst.needsSpelling;direct:false;text:mousyst.isSpelling?'Insert word':'Spell word';Layout.fillWidth:true;implicitHeight:34;onReleased:mousyst.isSpelling?mousyst.finishSpelling():mousyst.spellWord()}
+                Key {visible:mousyst.needsSpelling;direct:false;text:'Cancel pending';Layout.fillWidth:true;implicitHeight:34;onReleased:mousyst.cancel()}
                 MouseArea {anchors.fill:parent;acceptedButtons:Qt.NoButton
                     onWheel:wheel=>{if(mousyst.suggestions.length===0){suggestions.wheelDelta=0;wheel.accepted=false;return}suggestions.wheelDelta+=wheel.angleDelta.y;let steps=Math.trunc(suggestions.wheelDelta/120);if(steps){suggestions.wheelDelta-=steps*120;mousyst.cycleSuggestion(-steps)}wheel.accepted=true}
                 }
@@ -74,7 +95,7 @@ Window {
             RowLayout {visible:prefs.layout==='Full';spacing:5;Repeater {model:12;Key {required property int index;text:'F'+(index+1);Layout.fillWidth:true}}}
             RowLayout {visible:prefs.layout!=='Compact';spacing:5;Repeater {model:['1','2','3','4','5','6','7','8','9','0','-','='];Key {required property string modelData;text:modelData;Layout.fillWidth:true;repeatable:true}}}
             Item {
-                id:board;objectName:'desktopLetters';visible:!root.numbers;Layout.preferredWidth:14*root.pitch;Layout.preferredHeight:3*root.pitch
+                id:board;objectName:'desktopLetters';visible:!root.numbers&&!root.shelf;Layout.preferredWidth:14*root.pitch;Layout.preferredHeight:3*root.pitch
                 property var path:[]
                 property var visualPoints:[]
                 function clearVisual(){visualPoints=[];fadeClock.stop();trail.requestPaint()}
@@ -125,7 +146,7 @@ Window {
                 Key {x:12.5*root.pitch;y:2*root.pitch;width:1.5*root.pitch-5;text:'';iconName:'shift';value:'Shift';checked:mousyst.shifted}
             }
             Item {
-                id:numberBoard;objectName:'desktopNumbers';visible:root.numbers
+                id:numberBoard;objectName:'desktopNumbers';visible:root.numbers&&!root.shelf
                 Layout.preferredWidth:14*root.pitch;Layout.preferredHeight:3*root.pitch
                 property bool pad:prefs.numberFormat==='Numpad'
                 Repeater {
@@ -146,8 +167,13 @@ Window {
                     onReleased:mousyst.setPreference('numberFormat',numberBoard.pad?'Rows':'Numpad')
                 }
             }
+            ShelfPanel {
+                objectName:"desktopShelfPanel"; visible:root.shelf!==""
+                section:root.shelf; pitch:root.pitch
+                Layout.preferredWidth:14*root.pitch; Layout.preferredHeight:3*root.pitch
+            }
             RowLayout {spacing:5
-                Key {objectName:'numericLayerToggle';direct:false;text:root.numbers?'ABC':'&123';Layout.preferredWidth:1.4*root.pitch-5;onReleased:{board.abort();board.clearVisual();root.numbers=!root.numbers}}
+                Key {objectName:'numericLayerToggle';direct:false;text:root.numbers||root.shelf?'ABC':'&123';Layout.preferredWidth:1.4*root.pitch-5;onReleased:{board.abort();board.clearVisual();root.numbers=root.shelf?false:!root.numbers;root.shelf=""}}
                 Key {text:'Ctrl';checked:mousyst.activeModifiers.indexOf('Ctrl')>=0}
                 Key {text:'';iconName:'windows';value:'Win';checked:mousyst.activeModifiers.indexOf('Win')>=0}
                 Key {text:'Alt';checked:mousyst.activeModifiers.indexOf('Alt')>=0}
@@ -177,7 +203,7 @@ Window {
                 ColumnLayout {spacing:2;Key {text:'';iconName:'up';value:'Up';repeatable:true;implicitHeight:(root.pitch-7)/2}Key {text:'';iconName:'down';value:'Down';repeatable:true;implicitHeight:(root.pitch-7)/2}}
             }
             RowLayout {visible:prefs.layout!=='Compact';spacing:5;Repeater {model:['Home','End','Delete','PageUp','PageDown'];Key {required property string modelData;text:modelData;Layout.fillWidth:true}}}
-            Label {text:mousyst.message;color:'#858590';font.pixelSize:10;Layout.fillWidth:true;elide:Text.ElideRight}
+            Label {text:(mousyst.pendingCount ? mousyst.pendingCount+' pending · ' : '')+mousyst.message;color:'#858590';font.pixelSize:10;Layout.fillWidth:true;elide:Text.ElideRight}
         }
     }
     ApplicationWindow {

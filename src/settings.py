@@ -16,6 +16,7 @@ DEFAULTS = {
     "repeatInterval": 50,
     "scrubPixels": 8,
     "numberFormat": "Rows",
+    "personalWords": [],
     "symbols": dict(
         zip(
             "qwertyuiopasdfghjklzxcvbnm",
@@ -66,6 +67,14 @@ def validate(value: dict) -> dict:
         for k, v in result["symbols"].items()
     ):
         raise ValueError("symbols: map letters to single characters")
+    words = result["personalWords"]
+    if not isinstance(words, list) or len(words) > 256:
+        raise ValueError("Save up to 256 personal words.")
+    if any(not isinstance(word, str) or not re.fullmatch(r"[A-Za-z]{1,32}", word) for word in words):
+        raise ValueError("Use 1–32 English letters per personal word.")
+    if len({w.lower() for w in words}) != len(words):
+        raise ValueError("Each personal word must be unique.")
+    result["personalWords"] = list(words)
     result["symbols"] = dict(DEFAULTS["symbols"], **result["symbols"])
     return result
 

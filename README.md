@@ -22,12 +22,17 @@ M on black; right-click that icon to open Settings or Quit.
 - **ABC/123:** replace the main keys with symbol rows or a numpad in the same space.
 - **Shortcuts:** select Ctrl, Alt, Win, or Shift, then a key. Modifiers apply once.
 - **Repeat:** hold a letter or Backspace.
-- **Caret:** tap Space for a space; hold and drag it horizontally for caret movement.
+- **Caret:** tap Space for a space; drag left or right by character, or up and down by line.
 - **Settings:** choose Compact/Standard/Full, size, colors, repeat timing, symbols,
   and optional predictive aiming. Config import/export is available separately.
 
 Automatic opening is removed. Activation is manual through the middle button.
 See [the desktop guide](DESKTOP.md) for details and compatibility limits.
+
+The testing branch adds Edit, Shortcuts and Phrases above the keyboard, a personal
+swipe dictionary in Settings, and ordered input during recognition. To try this
+version from source, use `python src/desktop_app.py --development`. In the
+portable testing build, launch **MousystNext.exe**.
 
 The app uses offline English word recognition. No production text or clipboard
 history is saved. Some custom/elevated apps can reject input or lack accessible

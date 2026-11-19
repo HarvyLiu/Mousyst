@@ -61,6 +61,8 @@ class FocusObserver(QObject):
             "prefix": None,
             "caret": None,
             "editable": False,
+            "classic_edit": False,
+            "has_selection": None,
         }
         if password:
             result["editable"] = True
@@ -72,7 +74,9 @@ class FocusObserver(QObject):
             result["editable"] = not pattern.CurrentIsReadOnly
             value = pattern.CurrentValue
             native = int(element.CurrentNativeWindowHandle or 0)
-            if native and "edit" in element.CurrentClassName.lower():
+            class_name = element.CurrentClassName.lower()
+            result["classic_edit"] = bool(native and class_name == "edit")
+            if native and "edit" in class_name:
                 selected = ct.c_size_t()
                 user32.SendMessageTimeoutW.argtypes = [
                     ct.c_void_p,
@@ -91,6 +95,8 @@ class FocusObserver(QObject):
                         selected.value & 0xFFFF,
                         (selected.value >> 16) & 0xFFFF,
                     )
+                    if start != 65535 and end != 65535:
+                        result["has_selection"] = start != end
                     if start == end and start != 65535 and start <= len(value):
                         result["prefix"] = value[:start][-512:]
                         result["caret"] = start
@@ -105,7 +111,9 @@ class FocusObserver(QObject):
             ranges = pattern.GetSelection()
             if ranges.Length == 1:
                 selected = ranges.GetElement(0)
-                if selected.CompareEndpoints(0, selected, 1) == 0:
+                collapsed = selected.CompareEndpoints(0, selected, 1) == 0
+                result["has_selection"] = not collapsed
+                if collapsed:
                     prefix = pattern.DocumentRange.Clone()
                     prefix.MoveEndpointByRange(1, selected, 0)
                     content = prefix.GetText(-1)

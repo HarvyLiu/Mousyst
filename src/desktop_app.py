@@ -3,11 +3,15 @@
 import argparse
 import json
 import sys
+import time
+from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import (
     Property,
     QLockFile,
+    QObject,
     QPoint,
     QStandardPaths,
     QTimer,
@@ -27,8 +31,33 @@ from input_session import accepts_insertion, matches_owner
 from keymap import shifted_text
 from practice import Controller
 from settings import DEFAULTS, Settings
+from shelf_tools import ShelfTools
 from tray import app_icon
 from window_behavior import KeyboardActivationFilter
+
+
+@dataclass(frozen=True)
+class QueuedInput:
+    value: str | list
+    shift: bool
+    modifiers: tuple[str, ...]
+
+
+def expected_edit(field, removed, inserted):
+    """Predict a collapsed caret after a known local output for queue verification."""
+    if not field or field.get("password"):
+        return None
+    if field["prefix"] is None or field["caret"] is None:
+        return field
+    prefix = field["prefix"]
+    if removed > len(inserted) and field["caret"] > len(prefix):
+        # The newly exposed start of the 512-character prefix is unknown.
+        return None
+    return dict(
+        field,
+        prefix=((prefix[:-removed] if removed else prefix) + inserted)[-512:],
+        caret=max(0, field["caret"] - removed) + len(inserted),
+    )
 
 
 class DesktopController(Controller):
@@ -40,6 +69,7 @@ class DesktopController(Controller):
         super().__init__()
         self.changed.connect(self.desktopChanged.emit)
         self.settings = Settings()
+        self.shelf_tools = ShelfTools(self)
         self.output = None if smoke else DesktopInput()
         self.observer = None if smoke else FocusObserver()
         self.owner = None
@@ -50,7 +80,28 @@ class DesktopController(Controller):
         self.repeating = False
         self.repeat_timer = QTimer(self)
         self.repeat_timer.timeout.connect(self.repeat_tick)
+        self.pending_inputs = deque()
+        self.inflight_job = None
+        self.pending_field = None
+        self.waiting_target = None
+        self.last_edit_target = None
+        self.verify_timer = QTimer(self)
+        self.verify_timer.setSingleShot(True)
+        self.verify_timer.timeout.connect(self.drain_inputs)
+        self.recognition_timer = QTimer(self)
+        self.recognition_timer.setSingleShot(True)
+        self.recognition_timer.timeout.connect(
+            lambda: self.stop_pending(
+                "Recognition timed out. Enter the pending input again."
+            )
+        )
+        self.spelling = None
+        self.no_match = False
         self.status = self.settings.error or "Middle-click a text field to type."
+
+    @Property(QObject, constant=True)
+    def tools(self):
+        return self.shelf_tools
 
     @Property("QVariantMap", notify=desktopChanged)
     def preferences(self):
@@ -71,6 +122,18 @@ class DesktopController(Controller):
     @Property(int, notify=desktopChanged)
     def suggestionSession(self):
         return self.generation
+
+    @Property(bool, notify=desktopChanged)
+    def needsSpelling(self):
+        return self.no_match
+
+    @Property(bool, notify=desktopChanged)
+    def isSpelling(self):
+        return self.spelling is not None
+
+    @Property(int, notify=desktopChanged)
+    def pendingCount(self):
+        return len(self.pending_inputs) + int(self.busy or self.no_match)
 
     @Slot(int)
     def cycleSuggestion(self, steps):
@@ -125,6 +188,7 @@ class DesktopController(Controller):
     def saveSettings(self, text):
         try:
             self.settings.save(json.loads(text))
+            self.sync_personal_words()
             self.cancel()
             self.status = "Settings saved."
         except (OSError, ValueError, TypeError) as exc:
@@ -135,12 +199,32 @@ class DesktopController(Controller):
     def reloadSettings(self):
         self.cancel()
         self.settings.reload()
+        self.sync_personal_words()
         self.status = self.settings.error or "Configuration reloaded."
         self.changed.emit()
 
     @Slot(str, "QVariant")
     def setPreference(self, name, value):
         self.saveSettings(json.dumps(dict(self.preferences, **{name: value})))
+
+    def sync_personal_words(self):
+        if self.recognizer is not None:
+            self.recognizer.set_personal_words(self.preferences["personalWords"])
+
+    @Slot(str, int, result=bool)
+    def editPersonalWord(self, spelling, index):
+        words = list(self.preferences["personalWords"])
+        if index == -1:
+            words.append(spelling.strip())
+        elif 0 <= index < len(words):
+            if spelling:
+                words[index] = spelling.strip()
+            else:
+                del words[index]
+        else:
+            return False
+        self.setPreference("personalWords", words)
+        return self.preferences["personalWords"] == words
 
     @Slot(str, str)
     def setSymbol(self, key, value):
@@ -207,28 +291,93 @@ class DesktopController(Controller):
 
     @Slot(str)
     def key(self, value):
+        if value == "Escape":
+            self.cancel()
+            self.hideRequested.emit()
+            return
         if value == "Shift":
-            super().key(value)
+            self.shift = not self.shift
+            self.changed.emit()
             return
         if value in ("Ctrl", "Alt", "Win"):
-            self.modifier(value)
+            if value in self.modifiers:
+                self.modifiers.remove(value)
+            else:
+                self.modifiers.add(value)
+            self.changed.emit()
             return
-        if self.modifiers:
+        if self.spelling is not None:
+            if self.output and not accepts_insertion(
+                self.pending_field, self.snapshot()
+            ):
+                self.stop_pending("Field or caret changed. Pending input cancelled.")
+                return
+            if value in (" ", "Enter"):
+                self.finishSpelling()
+            elif value == "Back":
+                self.spelling = self.spelling[:-1]
+            elif len(value) == 1 and not self.modifiers:
+                self.spelling += shifted_text(value) if self.shift else value
+                self.shift = False
+            if self.spelling is not None:
+                self.status = self.spelling or "Click letters to spell your word."
+                self.changed.emit()
+            return
+        self.submit_input(value)
+
+    def submit_input(self, value):
+        action = QueuedInput(value, self.shift, tuple(self.activeModifiers))
+        if self.busy or self.waiting_target is not None or self.no_match:
+            if self.no_match:
+                self.status = "Spell the unrecognized word or cancel pending input."
+                self.changed.emit()
+                return
+            if len(self.pending_inputs) >= 8:
+                self.status = "Queue full. This input was not added."
+                self.changed.emit()
+                return
+            # While recognition runs the target should still match its start.
+            # During verification the host may still be applying our last output.
+            if (
+                self.busy
+                and self.output
+                and not accepts_insertion(self.pending_field, self.snapshot())
+            ):
+                self.stop_pending("Field or caret changed. Pending input cancelled.")
+                return
+            self.pending_inputs.append(action)
+            self.shift = False
+            self.modifiers.clear()
+            self.changed.emit()
+            return
+        self.shift = False
+        self.modifiers.clear()
+        if isinstance(value, str):
+            self.last_edit_target = self.commit_key(
+                action, self.snapshot() if self.output else None
+            )
+        else:
+            self.begin_stroke(action, self.snapshot())
+        self.changed.emit()
+
+    def commit_key(self, action, current):
+        value = action.value
+        mods = list(action.modifiers) + (["Shift"] if action.shift else [])
+        if self.last_edit_target and not matches_owner(self.last_edit_target, current):
+            self.editor.external("")
+            self.last_edit_target = None
+        if action.modifiers:
             self.owner = None
             self.editor.external("")
-            mods = list(self.activeModifiers) + (["Shift"] if self.shift else [])
             self.invalidate()
             if self.output:
                 self.dispatch(lambda: self.output.chord(value, mods))
-            self.modifiers.clear()
-            self.shift = False
             self.changed.emit()
-            return
+            return None
         named = (
             "Back",
             "Enter",
             "Tab",
-            "Escape",
             "Left",
             "Right",
             "Up",
@@ -253,23 +402,19 @@ class DesktopController(Controller):
         ):
             self.owner = None
             self.invalidate()
-            if value == "Escape":
-                self.cancel()
-                self.hideRequested.emit()
-                return
-            if self.output:
-                self.dispatch(
-                    lambda: self.output.chord(value, ["Shift"] if self.shift else [])
-                )
-            self.shift = False
+            if self.output and not self.dispatch(
+                lambda: self.output.chord(value, mods)
+            ):
+                return None
             if value == "Back":
                 self.editor.backspace()
             else:
                 self.editor.external("")
             self.changed.emit()
-            return
-        text = shifted_text(value) if self.shift else value
-        current = self.snapshot() if self.output else None
+            if value == "Back" and not mods:
+                return expected_edit(current, 1, "")
+            return None
+        text = shifted_text(value) if action.shift else value
         sensitive = self.output and (not current or current.get("password", False))
         if (
             self.output
@@ -281,21 +426,24 @@ class DesktopController(Controller):
         before = self.editor.text
         self.editor.insert(text)
         after = self.editor.text
-        if after != before:
+        if after == before:
+            return current
 
-            def send():
-                if before and not after.startswith(before) and self.output:
-                    self.output.chord("Back", [])
-                self.send_text(text)
+        removed = int(bool(before) and not after.startswith(before))
 
-            if not self.dispatch(send):
-                self.editor.external("")
+        def send():
+            if removed and self.output:
+                self.output.chord("Back", [])
+            self.send_text(text)
+
+        if not self.dispatch(send):
+            return None
         if sensitive:
             self.editor.external("")
         self.owner = None
-        self.shift = False
         self.invalidate()
         self.changed.emit()
+        return expected_edit(current, removed, text)
 
     @Slot(str)
     def secondary(self, letter):
@@ -309,12 +457,18 @@ class DesktopController(Controller):
         if generation < 0:
             super().receive(generation, revision, words, latency)
             if generation == -1:
+                self.sync_personal_words()
                 self.status = (
                     "Middle-click to show or hide · Right-click a letter for its symbol"
                 )
                 self.changed.emit()
             return
-        if generation != self.generation or revision != self.editor.revision:
+        if generation != self.generation:
+            return
+        self.inflight_job = None
+        self.recognition_timer.stop()
+        if revision != self.editor.revision:
+            self.stop_pending("Text changed. Pending input cancelled.")
             return
         before = self.snapshot()
         pending = getattr(self, "pending_field", None)
@@ -328,24 +482,36 @@ class DesktopController(Controller):
             return
         old = self.editor.text
         self.selected_candidate = 0
+        next_shift = self.shift
         super().receive(generation, revision, words, latency)
+        self.shift = next_shift
+        if not words:
+            self.no_match = True
+            self.status = "No match. Spell your word or cancel pending input."
+            self.changed.emit()
+            return
         addition = self.editor.text[len(old) :]
         if addition and not self.dispatch(lambda: self.send_text(addition)):
-            self.editor.external(old)
             return
         self.owner = None
         if before and before["prefix"] is not None:
-            self.owner = dict(before, prefix=(before["prefix"] + addition)[-512:])
-            self.owner["caret"] = before["caret"] + len(addition)
+            self.owner = expected_edit(before, 0, addition)
         elif self.output:
             self.candidates = []
             self.editor.external("")
             self.status = "Word entered. Alternatives unavailable in this text control."
+        if self.pending_inputs:
+            self.wait_for_output(self.owner or before)
+            self.drain_inputs()
         self.changed.emit()
 
     @Slot("QVariantList")
     def stroke(self, points):
-        self.pending_field = self.snapshot()
+        if len(points) >= 2:
+            self.submit_input(points)
+
+    def begin_stroke(self, action, target):
+        self.pending_field = target
         if self.output and (
             not self.pending_field or self.pending_field.get("password", False)
         ):
@@ -355,14 +521,91 @@ class DesktopController(Controller):
             )
             self.changed.emit()
             return
-        if self.output and not matches_owner(self.owner, self.pending_field):
+        if self.recognizer is None:
+            self.status = "Swipe vocabulary unavailable. Click letters to type."
+            self.changed.emit()
+            return
+        if self.output and not (
+            matches_owner(self.owner, self.pending_field)
+            or matches_owner(self.last_edit_target, self.pending_field)
+        ):
             self.editor.external("")
             self.owner = None
-        super().stroke(points)
+        self.last_edit_target = None
+        self.inflight_job = self.start_stroke(action.value, action.shift)
+        if self.busy:
+            self.recognition_timer.start(5000)
+            self.status = "Recognizing swipe…"
+
+    def stop_pending(self, message):
+        self.cancel()
+        self.status = message
+        self.changed.emit()
+
+    def wait_for_output(self, target):
+        # SendInput returning does not mean the host's accessibility tree has updated.
+        self.waiting_target = (target, time.monotonic() + 0.4)
+
+    def drain_inputs(self):
+        while self.pending_inputs and self.waiting_target is not None:
+            target, deadline = self.waiting_target
+            current = self.snapshot() if self.output else None
+            if self.output and not accepts_insertion(target, current):
+                if (
+                    target
+                    and current
+                    and not current.get("password")
+                    and current.get("identity") == target.get("identity")
+                    and current.get("hwnd") == target.get("hwnd")
+                    and time.monotonic() < deadline
+                ):
+                    self.verify_timer.start(16)
+                    return
+                self.stop_pending("Field or caret changed. Pending input cancelled.")
+                return
+            self.waiting_target = None
+            action = self.pending_inputs.popleft()
+            if isinstance(action.value, list):
+                self.begin_stroke(action, current)
+                self.changed.emit()
+                return
+            if (
+                self.output
+                and current["caret"] is None
+                and (len(action.value) != 1 or action.modifiers)
+            ):
+                self.stop_pending("Caret unavailable. Use this editing key directly.")
+                return
+            after = self.commit_key(action, current)
+            self.last_edit_target = after
+            if self.pending_inputs:
+                if self.output and after is None:
+                    self.stop_pending(
+                        "Command changed the editing context. Enter remaining input again."
+                    )
+                    return
+                self.wait_for_output(after)
+        self.changed.emit()
+
+    @Slot()
+    def spellWord(self):
+        if self.no_match:
+            self.spelling = ""
+            self.status = "Click letters, then press Insert word."
+            self.changed.emit()
+
+    @Slot()
+    def finishSpelling(self):
+        if not self.spelling or not self.no_match:
+            return
+        word = self.spelling
+        self.spelling = None
+        self.no_match = False
+        self.receive(self.generation, self.editor.revision, [word], 0)
 
     @Slot(int)
     def alternative(self, index):
-        if not 0 <= index < len(self.candidates):
+        if self.pendingCount or not 0 <= index < len(self.candidates):
             return
         current = self.snapshot()
         if self.output and not matches_owner(self.owner, current):
@@ -395,7 +638,7 @@ class DesktopController(Controller):
 
     @Slot()
     def undoWord(self):
-        if self.editor.span is None:
+        if self.pendingCount or self.editor.span is None:
             return
         current = self.snapshot()
         if self.output and not matches_owner(self.owner, current):
@@ -450,6 +693,16 @@ class DesktopController(Controller):
 
     @Slot()
     def cancel(self):
+        if self.inflight_job is not None:
+            self.inflight_job.cancel()
+            self.inflight_job = None
+        self.pending_inputs.clear()
+        self.verify_timer.stop()
+        self.recognition_timer.stop()
+        self.waiting_target = None
+        self.last_edit_target = None
+        self.spelling = None
+        self.no_match = False
         if hasattr(self, "repeat_timer"):
             self.releaseHold()
         self.owner = None
@@ -459,6 +712,11 @@ class DesktopController(Controller):
         self.status = (
             "Middle-click to show or hide · Right-click a letter for its symbol"
         )
+
+    @Slot()
+    def reset(self):
+        self.cancel()
+        super().reset()
 
 
 def main():
@@ -480,8 +738,14 @@ def main():
     if args.smoke_test:
         # Offscreen Qt does not discover system fonts on some Windows runners.
         import os
+        from tempfile import TemporaryDirectory
 
         from PySide6.QtGui import QFontDatabase
+
+        smoke_root = Path("build/desktop").resolve()
+        smoke_root.mkdir(parents=True, exist_ok=True)
+        smoke_profile = TemporaryDirectory(prefix="profile-", dir=smoke_root)
+        os.environ["MOUSYST_SETTINGS_DIR"] = smoke_profile.name
 
         QFontDatabase.addApplicationFont(
             str(Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts/segoeui.ttf")
@@ -517,8 +781,6 @@ def main():
             socket.waitForBytesWritten(300)
         return 0
     controller = DesktopController(args.smoke_test)
-    if args.smoke_test:
-        controller.settings.path = Path("build/desktop/smoke-settings.json")
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("mousyst", controller)
     warnings = []
@@ -572,8 +834,7 @@ def main():
             return
         field = controller.snapshot()
         controller.password = bool(field and field["password"])
-        if field:
-            controller.current_field = field["identity"]
+        controller.current_field = field["identity"] if field else None
         point = QCursor.pos()
         screen = QGuiApplication.screenAt(point) or app.primaryScreen()
         bounds = screen.availableGeometry()
@@ -929,12 +1190,19 @@ def main():
                 settings_click("settingsColorApply")
                 assert controller.preferences["accent"] != "#bfe8d5"
                 controller.setPreference("accent", original_accent)
+                word_editor = settings_window.findChild(QObject, "personalWordInput")
+                word_editor.setProperty("text", "Mousyst")
+                word_editor.saveWord()
+                assert controller.preferences["personalWords"] == ["Mousyst"]
+                assert "Mousyst" in controller.recognizer.recognize([CENTERS[c] for c in "mousyst"])
+                assert controller.editPersonalWord("", 0)
                 window.setProperty("settingsOpen", False)
                 (folder / "smoke.json").write_text(
                     json.dumps(
                         {
                             "ok": True,
                             "checks": [
+                                "save a personal spelling from Settings, recognize its swipe, and remove it",
                                 "right-click symbol",
                                 "click",
                                 "hold repeat",
