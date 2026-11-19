@@ -1,0 +1,71 @@
+---
+import Shell from '../layouts/Shell.astro';
+import { rows } from '../demo/recognizer.mjs';
+const symbols = ['1234567890', '!@#$%&*()', '+-=<>/[]{}', '.,;:\'"?_\\^'];
+---
+<Shell title="Typing demo — Mousyst">
+  <section class="demo" id="typing-demo">
+    <h1 data-en="Try Mousyst." data-zh="試試 Mousyst。">Try Mousyst.</h1>
+    <p class="instructions" data-en="Click a letter or hold and glide through a word. Try H → E → L → O for “hello”. On a touch screen, drag with your finger." data-zh="點擊字母，或按住並滑過一個英文單字。試著滑過 H → E → L → O，輸入「hello」。觸控螢幕也能用手指滑行。">Click a letter or hold and glide through a word. Try H → E → L → O for “hello”. On a touch screen, drag with your finger.</p>
+    <label for="demo-text" data-en="Your text" data-zh="輸入內容">Your text</label>
+    <textarea id="demo-text" rows="3" spellcheck="false" autocomplete="off"></textarea>
+    <div class="demo-keyboard">
+      <div class="candidates" aria-label="Word suggestions">
+        {[0,1,2].map(i=><button type="button" data-candidate={i} disabled></button>)}
+        <button type="button" id="undo-word" disabled data-en="Undo word" data-zh="撤回單字">Undo word</button>
+      </div>
+      <div class="keys-stage">
+        <div class="letter-board" id="letter-board">
+          {rows.map((row,r)=><div class="letter-row">{[...row].map((key,i)=>
+            <button type="button" data-letter={key} style={`grid-column: ${1+[0,1,3][r]+i*2} / span 2`}>{key}</button>
+          )}</div>)}
+          <svg class="trail" aria-hidden="true"><path fill="none"/></svg>
+        </div>
+        <div class="symbol-board" hidden>{symbols.map(row=><div>{[...row].map(key=><button type="button" data-char={key}>{key}</button>)}</div>)}</div>
+      </div>
+      <div class="controls">
+        <button type="button" id="layer" aria-pressed="false">123</button>
+        <button type="button" id="demo-shift" aria-pressed="false">Shift</button>
+        <button type="button" data-char="," aria-label="Comma">,</button>
+        <button type="button" data-char=" " class="space" data-en="Space" data-zh="空白">Space</button>
+        <button type="button" data-char="." aria-label="Period">.</button>
+        <button type="button" id="backspace" aria-label="Backspace">⌫</button>
+        <button type="button" data-char={'\n'} aria-label="Enter">↵</button>
+      </div>
+    </div>
+    <p class="status" role="status"></p>
+    <p class="hint" data-en="After a swipe, click a suggestion or scroll over the suggestions to replace the word. Your text stays in this tab." data-zh="滑行後可點擊候選字，或在候選列上滾動以替換單字。輸入內容只保留在這個分頁。">After a swipe, click a suggestion or scroll over the suggestions to replace the word. Your text stays in this tab.</p>
+    <p class="credit"><span data-en="English vocabulary derived from" data-zh="英文詞庫來源為">English vocabulary derived from</span> <a href="https://github.com/rspeer/wordfreq#license">wordfreq 3.1.1</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> · <a href="/demo-credits/ATTRIBUTION.md" data-en="Attribution" data-zh="來源說明">Attribution</a></p>
+    <noscript><p>Enable JavaScript to use the on-screen keyboard. 請啟用 JavaScript 以使用螢幕鍵盤。</p></noscript>
+  </section>
+</Shell>
+<script>import '../demo/controller';</script>
+<style>
+.demo{width:min(760px,100%);margin:auto;padding:55px clamp(14px,4vw,36px) 65px}
+.demo h1{font-size:clamp(45px,7vw,78px);margin:0 0 19px}
+.instructions,.hint,.credit{color:var(--muted);font-size:14px}
+.instructions{max-width:56ch;margin:0 0 30px}
+.demo label{display:block;color:var(--mint);font-size:13px;margin-bottom:9px}
+.demo textarea{display:block;resize:vertical;width:100%;min-height:96px;padding:17px 18px;font-family:inherit;font-size:18px;line-height:1.5;color:var(--fg);caret-color:var(--mint);background:#151a17;border:1px solid #3a453e;border-radius:9px;margin-bottom:15px}
+.demo textarea:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.demo-keyboard{padding:clamp(6px,1.6vw,15px);border:1px solid #49544c;background:linear-gradient(145deg,#262d28,#1b201d);border-radius:12px;box-shadow:0 14px 32px #0003;user-select:none}
+.demo-keyboard button{font:inherit;color:var(--fg);padding:0;border:1px solid #424d45;border-bottom-color:#111613;border-radius:5px;background:linear-gradient(150deg,#374039,#292f2b);box-shadow:0 1px 1px #0006;min-width:0;touch-action:manipulation}
+.demo-keyboard button:enabled:hover{border-color:#7e9e88}
+.demo-keyboard button:active,.demo-keyboard button[aria-pressed=true]{color:#14221a;background:var(--mint)}
+.candidates{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;min-height:38px;margin-bottom:8px;border-bottom:1px solid #ffffff19;padding-bottom:6px}
+.candidates button{background:none;border:0;box-shadow:none;border-radius:4px;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px}
+.candidates button:disabled{cursor:default;color:#939e96}.candidates button[aria-pressed=true]{background:#33493b;color:var(--mint)}
+.candidates #undo-word{font-size:11px;padding-inline:6px}
+.keys-stage{height:clamp(134px,23vw,180px);position:relative}
+.letter-board,.symbol-board{height:100%;display:grid;gap:4px;position:relative}
+.letter-board{touch-action:none;grid-template-rows:repeat(3,1fr)}
+.letter-row{display:grid;grid-template-columns:repeat(20,minmax(0,1fr));gap:0}
+.letter-row button{margin:0 2px;touch-action:none;font-size:clamp(15px,3vw,20px)}
+.symbol-board{grid-template-rows:repeat(4,1fr)}
+.symbol-board>div{display:flex;justify-content:center;gap:3px}.symbol-board button{width:9.6%;font-size:16px}
+.trail{pointer-events:none;position:absolute;inset:0;width:100%;height:100%;overflow:hidden}
+.trail path{stroke:var(--mint);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.controls{margin-top:5px;display:flex;gap:4px;min-height:42px}.controls button{flex:1;font-size:13px}.controls .space{flex:3}.controls #backspace,.controls [aria-label=Enter]{font-size:19px}
+.demo [hidden]{display:none!important}.status{margin:8px 0;color:var(--mint);font-size:13px}.status:empty{display:none}.hint{font-size:12px;margin:19px 0}.credit{font-size:11px}.credit a{text-decoration:underline}
+@media(max-width:480px){.demo{padding-top:34px}.demo-keyboard{margin-inline:-4px}.letter-row button{margin-inline:1px}.controls{gap:2px}.candidates button{font-size:11px}}
+</style>
