@@ -1,7 +1,9 @@
 # Mousyst desktop keyboard
 
 Extract the full bundle and run its executable. Keep _internal beside the EXE.
-Mousyst starts in the Windows tray. Middle-click a text field to open or hide the
+Mousyst shows a welcome card on startup. Click another window, press Escape,
+or choose Got it to dismiss it. Reopen it from the tray under Welcome & tips.
+Middle-click a text field to open or hide the
 keyboard. Close hides it; right-click its tray icon to open Settings or Quit.
 Launching another copy opens Settings in the existing instance.
 

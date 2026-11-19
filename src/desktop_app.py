@@ -33,6 +33,7 @@ from practice import Controller
 from settings import DEFAULTS, Settings
 from shelf_tools import ShelfTools
 from tray import app_icon
+from welcome import WelcomeCard
 from window_behavior import KeyboardActivationFilter
 
 
@@ -793,6 +794,7 @@ def main():
         controller.executor.shutdown(wait=True)
         return 1
     window = engine.rootObjects()[0]
+    welcome = WelcomeCard()
     activation = KeyboardActivationFilter(
         window, lambda: controller.output.target if controller.output else 0
     )
@@ -828,6 +830,7 @@ def main():
         window.hide()
 
     def show(hwnd=None):
+        welcome.hide()
         if controller.output and not controller.output.capture(
             hwnd or int(__import__("desktop").user32.GetForegroundWindow())
         ):
@@ -866,11 +869,13 @@ def main():
             connection = server.nextPendingConnection()
             if connection:
                 connection.disconnectFromServer()
+            welcome.hide()
             window.setProperty("settingsOpen", True)
 
         server.newConnection.connect(activate_existing)
     menu = QMenu()
     menu.addAction("Show keyboard", lambda: show())
+    menu.addAction("Welcome & tips", welcome.present)
     menu.addAction("Settings", lambda: window.setProperty("settingsOpen", True))
     menu.addAction("Quit", app.quit)
     tray = QSystemTrayIcon(app.windowIcon(), app)
@@ -908,6 +913,8 @@ def main():
             )
         )
         guard.start()
+        if not args.test_layout_report:
+            welcome.present()
     else:
         window.show()
 
