@@ -39,6 +39,7 @@ class Recognizer:
         self._base = (self.words, self.templates, np.log1p(np.arange(len(words))) * 0.012)
         self._lexicon = self._base
         self._personal_words = ()
+        self.learned = {}, (0.0, 0.0)
 
     def set_personal_words(self, words):
         words = tuple(words)
@@ -67,7 +68,8 @@ class Recognizer:
 
     def recognize(self, points):
         words, templates, prior = self._lexicon
-        p = resample(points)
+        counts, bias = self.learned
+        p = resample(points) - bias
         endpoint = np.linalg.norm(templates[:, 0] - p[0], axis=1) + np.linalg.norm(
             templates[:, -1] - p[-1], axis=1
         )
@@ -88,5 +90,6 @@ class Recognizer:
                     current[j] = d + min(previous[j], current[j - 1], previous[j - 1])
                 previous = current
             score = previous[-1] / 32 + endpoint[index] * 0.8 + prior[index]
+            score -= 0.055 * np.log1p(counts.get(words[index].lower(), 0))
             ranked.append((score, int(index)))
         return [words[i] for _, i in sorted(ranked)[:3]]

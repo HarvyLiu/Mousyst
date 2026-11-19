@@ -32,6 +32,7 @@ from keymap import shifted_text
 from practice import Controller
 from settings import DEFAULTS, Settings
 from shelf_tools import ShelfTools
+from swipe_learning import SwipeLearning
 from tray import app_icon
 from welcome import WelcomeCard
 from window_behavior import KeyboardActivationFilter
@@ -70,6 +71,8 @@ class DesktopController(Controller):
         super().__init__()
         self.changed.connect(self.desktopChanged.emit)
         self.settings = Settings()
+        self.learning = SwipeLearning(self.settings.path.parent)
+        self.learning_points = None
         self.shelf_tools = ShelfTools(self)
         self.output = None if smoke else DesktopInput()
         self.observer = None if smoke else FocusObserver()
@@ -211,6 +214,33 @@ class DesktopController(Controller):
     def sync_personal_words(self):
         if self.recognizer is not None:
             self.recognizer.set_personal_words(self.preferences["personalWords"])
+            self.sync_learning()
+
+    def sync_learning(self):
+        if self.recognizer is not None:
+            self.recognizer.learned = self.learning.state if self.preferences["swipeLearning"] else ({}, (0, 0))
+
+    @Slot()
+    def clearLearning(self):
+        self.learning_points = None
+        try:
+            self.learning.clear()
+            self.sync_learning()
+            self.status = "Swipe learning cleared."
+        except OSError as exc:
+            self.status = str(exc)
+        self.changed.emit()
+
+    def confirm_swipe(self, field):
+        points, self.learning_points = self.learning_points, None
+        if (not points or not self.preferences["swipeLearning"] or not self.candidates
+                or not matches_owner(self.owner, field)):
+            return
+        try:
+            self.learning.remember(self.candidates[self.selected_candidate], points, self.selected_candidate != 0)
+            self.sync_learning()
+        except OSError:
+            self.status = "Could not save swipe learning."
 
     @Slot(str, int, result=bool)
     def editPersonalWord(self, spelling, index):
@@ -363,6 +393,10 @@ class DesktopController(Controller):
 
     def commit_key(self, action, current):
         value = action.value
+        if not action.modifiers and (len(value) == 1 or value in ("Enter", "SPACE")):
+            self.confirm_swipe(current)
+        else:
+            self.learning_points = None
         mods = list(action.modifiers) + (["Shift"] if action.shift else [])
         if self.last_edit_target and not matches_owner(self.last_edit_target, current):
             self.editor.external("")
@@ -512,6 +546,7 @@ class DesktopController(Controller):
             self.submit_input(points)
 
     def begin_stroke(self, action, target):
+        self.confirm_swipe(target)
         self.pending_field = target
         if self.output and (
             not self.pending_field or self.pending_field.get("password", False)
@@ -533,6 +568,8 @@ class DesktopController(Controller):
             self.editor.external("")
             self.owner = None
         self.last_edit_target = None
+        if self.preferences["swipeLearning"] and target and not target.get("password", True):
+            self.learning_points = [(p["x"], p["y"]) for p in (action.value[0], action.value[-1])]
         self.inflight_job = self.start_stroke(action.value, action.shift)
         if self.busy:
             self.recognition_timer.start(5000)
@@ -600,6 +637,7 @@ class DesktopController(Controller):
         if not self.spelling or not self.no_match:
             return
         word = self.spelling
+        self.learning_points = None
         self.spelling = None
         self.no_match = False
         self.receive(self.generation, self.editor.revision, [word], 0)
@@ -694,6 +732,7 @@ class DesktopController(Controller):
 
     @Slot()
     def cancel(self):
+        self.learning_points = None
         if self.inflight_job is not None:
             self.inflight_job.cancel()
             self.inflight_job = None

@@ -91,6 +91,38 @@ def test_two_swipes_then_punctuation(keyboard):
     assert c.output.text == "hello world." and c.pendingCount == 0
 
 
+def test_only_final_verified_swipe_choice_is_learned(keyboard):
+    c = keyboard
+    swipe(c)
+    c.executor.finish()
+    c.alternative(1)
+    assert not c.learning.path.exists()
+    c.key(".")
+    assert c.learning.state[0] == {"help": 3}
+    assert type(c.learning)(c.learning.path.parent).state == c.learning.state
+    c.clearLearning()
+    assert not c.learning.path.exists()
+    swipe(c)
+    c.executor.finish()
+    c.key("Back")
+    assert not c.learning.path.exists()
+
+
+@pytest.mark.parametrize("reason", ["disabled", "password", "changed field"])
+def test_unconfirmed_swipes_stay_out_of_profile(keyboard, reason):
+    c = keyboard
+    if reason == "disabled":
+        c.settings.value["swipeLearning"] = False
+    swipe(c)
+    c.executor.finish()
+    if reason == "password":
+        c.output.password = True
+    if reason == "changed field":
+        c.output.identity = (999,)
+    c.key(".")
+    assert not c.learning.path.exists()
+
+
 def test_delayed_worker_signal_preserves_order_on_gui_thread(keyboard, monkeypatch):
     c = keyboard
     recognize = c.recognizer.recognize

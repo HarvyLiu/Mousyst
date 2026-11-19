@@ -127,6 +127,11 @@ Item {
                 RowLayout {Caption {text:'Number panel'}Choice {model:['Rows','Numpad'];currentIndex:model.indexOf(prefs.numberFormat);onActivated:mousyst.setPreference('numberFormat',currentText)}}
                 RowLayout {Caption {text:'Colors'}Action {objectName:'settingsBackgroundColor';text:'Background';onClicked:colorPicker.choose('background')}Action {objectName:'settingsAccentColor';text:'Accent';onClicked:colorPicker.choose('accent')}}
                 Section {text:'TYPING & POINTER'}
+                RowLayout {
+                    Caption {text:'Learn from my swipes'}
+                    Switch {checked:prefs.swipeLearning;onToggled:if(checked!==prefs.swipeLearning)mousyst.setPreference('swipeLearning',checked)}
+                    Action {text:'Clear learning';onClicked:mousyst.clearLearning()}
+                }
                 RowLayout {Caption {text:'Predictive aim · experimental'}Switch {id:aim;checked:prefs.hitboxAssist;onToggled:if(checked!==prefs.hitboxAssist)mousyst.setPreference('hitboxAssist',checked)
                     indicator:Rectangle {implicitWidth:38;implicitHeight:22;radius:11;color:aim.checked?'#bebecb':'#34343d';border.color:'#50505c';Rectangle {x:aim.checked?19:3;y:3;width:16;height:16;radius:8;color:aim.checked?'#25252b':'#a1a1af';Behavior on x {NumberAnimation {duration:90}}}}
                 }}

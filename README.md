@@ -34,8 +34,9 @@ swipe dictionary in Settings, and ordered input during recognition. To try this
 version from source, use `python src/desktop_app.py --development`. In the
 portable testing build, launch **MousystNext.exe**.
 
-The app uses offline English word recognition. No production text or clipboard
-history is saved. Some custom/elevated apps can reject input or lack accessible
+The app uses offline English word recognition. The testing build learns from
+confirmed suggestions, storing bounded word counts and an average pointer offset
+on your device. Turn it off or clear it in Settings. Some custom/elevated apps can reject input or lack accessible
 caret information; alternatives are disabled when replacement cannot be verified.
 This is a desktop preview, with broader application and mixed-DPI testing still needed.
 

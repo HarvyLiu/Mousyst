@@ -60,7 +60,13 @@ the spelling (for example, Mousyst), and choose **Save**. Choose an existing
 entry to change its capitalization or remove it. Config export includes the
 dictionary. Only the words you add explicitly are saved.
 
-No production text or clipboard history is saved. Inference and configuration
+Swipe learning is enabled by default. Continuing to type after a swipe confirms
+the current suggestion. Mousyst saves up to 512 candidate-word counts and a
+small average pointer offset on this device. Choosing a correction gives it
+more weight than keeping the first result. Password fields and unverifiable
+carets are excluded. Under Typing & Pointer, disable learning to suspend both
+collection and personalization, or choose Clear learning to erase the profile.
+Mousyst does not store sentences, raw strokes or clipboard history. Inference and configuration
 are local. The bundled vocabulary includes its attribution and licenses.
 
 Build: ./build-preview.ps1 -Desktop -BundleName MousystDesktop

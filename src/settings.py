@@ -12,6 +12,7 @@ DEFAULTS = {
     "background": "#171719",
     "accent": "#eeeeef",
     "hitboxAssist": False,
+    "swipeLearning": True,
     "repeatDelay": 450,
     "repeatInterval": 50,
     "scrubPixels": 8,
@@ -54,7 +55,7 @@ def validate(value: dict) -> dict:
     ]:
         if type(result[key]) not in (int, float) or not low <= result[key] <= high:
             raise ValueError(key + ": out of range")
-    for key in ("hitboxAssist",):
+    for key in ("hitboxAssist", "swipeLearning"):
         if type(result[key]) is not bool:
             raise ValueError(key + ": expected true/false")
     for key in ("background", "accent"):

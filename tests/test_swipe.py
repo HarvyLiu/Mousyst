@@ -82,3 +82,12 @@ def test_personal_words_keep_spelling_and_restore_original_vocabulary():
     r.set_personal_words([])
     assert "Mousyst" not in r.recognize(path)
     assert r.recognize([CENTERS[c] for c in "typing"])[0] == "typing"
+
+
+def test_learned_preference_breaks_a_shape_tie():
+    r = Recognizer(["to", "too", "world"])
+    path = [CENTERS[c] for c in "to"]
+    assert r.recognize(path)[0] == "to"
+    r.learned = {"too": 6}, (0.05, 0.05)
+    assert r.recognize(path)[0] == "too"
+    assert r.recognize([CENTERS[c] for c in "world"])[0] == "world"
