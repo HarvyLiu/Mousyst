@@ -1,6 +1,6 @@
 import dictionaryUrl from '../../../src/data/zhuyin.csv?url';
 import {makeConverter} from './mandarin.mjs';
-import {endpointPairs,matchSwipe} from '../../../src/ui/zhuyin-trace.mjs';
+import {contextualStarts,endpointPairs,matchSwipe} from '../../../src/ui/zhuyin-trace.mjs';
 
 async function loadDictionary() {
   const response=await fetch(dictionaryUrl);
@@ -9,7 +9,7 @@ async function loadDictionary() {
 }
 const dictionary=loadDictionary();
 dictionary.catch(()=>{});
-let previous={id:-1,reading:""};
+let previous={id:-1,reading:"",startCenters:null as Record<string,number[]>|null};
 self.onmessage=async ({data})=>{
   try {
     const decoder=await dictionary;
@@ -20,16 +20,22 @@ self.onmessage=async ({data})=>{
     }else if(!data.gesture && data.reading===data.previousReading.slice(0,-1)){
       options=[base.slice(0,-1)];
     }
+    const lookup=(pairs:string[])=>pairs.flatMap(id=>decoder.buckets.get(id) ?? []);
+    const startCenters=base && previous.id===data.id-1 ? previous.startCenters : data.gesture?.centers ?? null;
     if(data.gesture){
       const {points,centers,suffixes}=data.gesture;
-      const lookup=(pairs:string[])=>pairs.flatMap(id=>decoder.buckets.get(id) ?? []);
       const bucket=lookup(endpointPairs(points,centers));
       const ranked=matchSwipe(points,centers,bucket,suffixes,decoder.syllables,lookup)
         .map((suffix:string)=>base+suffix).filter((key:string)=>key.length<=60);
       if(ranked.length)options=ranked;
     }
-    const result=decoder.convert(options.filter((key:string)=>key.length<=60));
-    previous={id:data.id,reading:result.reading ?? base};
+    options=options.filter((key:string)=>key.length<=60);
+    const result=decoder.convert(options);
+    if(base && startCenters && options.length && data.reading.length>=data.previousReading.length){
+      const variants=contextualStarts(options,startCenters,decoder.syllables,lookup).filter((s:string)=>s.length<=60);
+      if(variants.length)result.words=decoder.convert([...new Set([options[0],...variants,...options])]).words;
+    }
+    previous={id:data.id,reading:result.reading ?? base,startCenters};
     self.postMessage({id:data.id,...result});
   } catch {self.postMessage({id:data.id,failed:true});}
 };

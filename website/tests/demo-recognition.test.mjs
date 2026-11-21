@@ -67,10 +67,24 @@ test('Mandarin composes unlisted sentences and recognizes a multiword glide', as
     const ranked=matchSwipe(points,centers,lookup(endpointPairs(points,centers)),traceReadings(points,centers),decoder.syllables,lookup);
     assert.equal(decoder.convert(ranked).words[0],word);
   }
+  const target='ㄨㄛˇㄕˋㄋㄧˇㄉㄜ˙';
+  const recognize=points=>decoder.convert(matchSwipe(points,centers,lookup(endpointPairs(points,centers)),traceReadings(points,centers),decoder.syllables,lookup)).words;
+  const slipped=[...target].map(k=>centers[k].slice());
+  slipped[1]=slipped[1].map((v,d)=>.2*v+.8*centers['ㄞ'][d]);
+  slipped[2]=slipped[1].map((v,d)=>(v+slipped[3][d])/2);
+  const corrected=recognize(slipped);
+  assert.equal(corrected[0],'我是你的');
+  assert.ok(corrected.includes('歪是你的'));
+  assert.equal(decoder.compose('ㄨㄞㄕˋㄋㄧˇㄉㄜ˙')[0],'歪是你的');
+  for(let run=0;run<8;run++){
+    const noisy=[...target].map((key,i)=>centers[key].map((v,d)=>v+.48*Math.sin(7*i+13*run+2*d)));
+    const fast=noisy.map((p,i)=>i===0||i===noisy.length-1?p:p.map((v,d)=>.8*v+.1*(noisy[i-1][d]+noisy[i+1][d])));
+    assert.equal(recognize(fast)[0],'我是你的');
+  }
   // Separate vocabulary from the examples used during recognizer development.
   const heldOut=['ㄌㄠˇㄕ','ㄊㄨㄥˊㄒㄩㄝˊ','ㄒㄧㄣㄨㄣˊ','ㄧㄣㄩㄝˋ','ㄕˊㄐㄧㄢ','ㄍㄨㄥㄩㄢˊ',
     'ㄅㄧㄥㄒㄧㄤ','ㄒㄧㄤㄐㄧㄠ','ㄆㄥˊㄧㄡˇ','ㄉㄧㄢˋㄧㄥˇ','ㄧㄣˊㄏㄤˊ','ㄒㄧㄚˋㄩˇ'];
-  let correct=0;
+  let correct=0, roundedCorrect=0;
   for(const [i,reading] of heldOut.entries()){
     for(let run=0;run<4;run++){
       const points=[...reading].map((key,j)=>[
@@ -79,7 +93,11 @@ test('Mandarin composes unlisted sentences and recognizes a multiword glide', as
       ]);
       const options=matchSwipe(points,centers,lookup(endpointPairs(points,centers)),traceReadings(points,centers),decoder.syllables,lookup);
       if(decoder.convert(options).reading===reading)correct++;
+      const rounded=points.map((p,j)=>!j||j===points.length-1?p:p.map((v,d)=>.8*v+.1*(points[j-1][d]+points[j+1][d])));
+      const fastOptions=matchSwipe(rounded,centers,lookup(endpointPairs(rounded,centers)),traceReadings(rounded,centers),decoder.syllables,lookup);
+      if(decoder.convert(fastOptions).reading===reading)roundedCorrect++;
     }
   }
+  assert.ok(roundedCorrect>=32, `Only ${roundedCorrect}/48 rounded traces ranked the expected reading first`);
   assert.ok(correct>=42,`Only ${correct}/48 noisy traces ranked the expected reading first`);
 });

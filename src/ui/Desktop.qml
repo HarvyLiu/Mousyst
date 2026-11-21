@@ -222,6 +222,15 @@ Window {
                         }
                         return entries
                     }
+                    function submit(suffixes){
+                        if(!suffixes.length)return
+                        let alternatives=[]
+                        if(mousyst.readingStartedWithSwipe){
+                            const options=suffixes.slice(0,4).map(s=>mousyst.pronunciation+s)
+                            alternatives=ZhTrace.contextualStarts(options,centers,cachedSyllables,pairs=>lookup(pairs))
+                        }
+                        mousyst.phoneticTrace(suffixes,alternatives)
+                    }
                     function reset(){first="";points=[];dragged=false;zhTrail.requestPaint()}
                     function point(x,y){return [11*x/width,4*y/height]}
                     function record(x,y){let p=point(x,y);if(Math.hypot(p[0]-points[0][0],p[1]-points[0][1])>0.33)dragged=true
@@ -237,8 +246,8 @@ Window {
                             const guesses=ZhTrace.traceReadings(points,centers)
                             if(!cachedSyllables)cachedSyllables=mousyst.swipeSyllables()
                             const bucket=lookup(ZhTrace.endpointPairs(points,centers))
-                            mousyst.phoneticTrace(ZhTrace.matchSwipe(points,centers,bucket,guesses,cachedSyllables,pairs=>lookup(pairs)))
-                        }else mousyst.releasePhoneticTap(first)}reset()}
+                            submit(ZhTrace.matchSwipe(points,centers,bucket,guesses,cachedSyllables,pairs=>lookup(pairs)))
+                        }else if(mousyst.readingStartedWithSwipe)submit([first]);else mousyst.releasePhoneticTap(first)}reset()}
                     onCanceled:reset()
                     onVisibleChanged:if(!visible)reset()
                 }

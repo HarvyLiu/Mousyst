@@ -164,7 +164,7 @@ function wordMatches(path,centers,lookup){
     return words.sort((a,b)=>a[1]-b[1]).slice(0,4);
 }
 
-export function matchSwipe(points,centers,entries,guesses,syllables,lookup) {
+function matchPath(points,centers,entries,guesses,syllables,lookup) {
     if(points.length<2)return [];
     const count=24, observed=profile(points,count);
     const scores=new Map();
@@ -220,4 +220,114 @@ export function matchSwipe(points,centers,entries,guesses,syllables,lookup) {
     if(!ranked.length)return guesses.slice(0,12);
     const best=scores.get(ranked[0]);
     return ranked.filter(k=>scores.get(k)<=best+.55).slice(0,96);
+}
+
+
+// Fast drags often cut inside a turn. Estimate the intended vertices using a
+// bounded inverse of the same corner-rounding model used to verify candidates.
+function restoreTurns(turns,amount){
+    let estimate=turns;
+    for(let pass=0;pass<4;pass++){
+        estimate=turns.map((p,i)=>{
+            if(i===0||i===turns.length-1)return p;
+            const dx=amount/(1-amount)*(p[0]-(estimate[i-1][0]+estimate[i+1][0])/2);
+            const dy=amount/(1-amount)*(p[1]-(estimate[i-1][1]+estimate[i+1][1])/2);
+            const limit=Math.max(1,Math.hypot(dx,dy)/1.85);
+            return [p[0]+dx/limit,p[1]+dy/limit];
+        });
+    }
+    return estimate;
+}
+
+// An undershot vowel and a skipped tone can still sound like a legal syllable.
+// Recover alternatives only when the following sounds form a frequent dictionary word.
+export function contextualStarts(options,centers,syllables,lookup){
+    if(!options.length)return [];
+    const tones='ˊˇˋ˙';
+    const stripTone=s=>tones.includes(s[s.length-1])?s.slice(0,-1):s;
+    const phraseCache=new Map(), alternatives=new Map();
+    function frequency(key){
+        const id=key[0]+key[key.length-1];
+        if(!phraseCache.has(id))phraseCache.set(id,new Map(lookup([id])));
+        return phraseCache.get(id).get(key)||0;
+    }
+    for(const reading of options.slice(0,4)){
+        const prefix=syllables.filter(([s])=>reading.startsWith(s)).sort((a,b)=>b[0].length-a[0].length)[0];
+        if(!prefix)continue;
+        const tail=reading.slice(prefix[0].length);
+        const next=syllables.filter(([s])=>tail.startsWith(s)).sort((a,b)=>b[0].length-a[0].length)[0];
+        if(!next)continue;
+        const base=stripTone(prefix[0]);
+        if(base.length<2)continue;
+        const evidence=frequency(prefix[0]+next[0]);
+        for(const [key,prior] of syllables){
+            const alt=stripTone(key);
+            if(key===prefix[0] || alt.length!==base.length || alt.slice(0,-1)!==base.slice(0,-1))continue;
+            const a=centers[base[base.length-1]], b=centers[alt[alt.length-1]];
+            const distance=Math.hypot(a[0]-b[0],a[1]-b[1]);
+            if(distance>1.55)continue;
+            const freq=frequency(key+next[0]);
+            if(freq<Math.max(250,evidence*5))continue;
+            const score=Math.log(1+freq)+.16*Math.log(1+prior)-distance;
+            const result=key+tail;
+            if(!alternatives.has(result)||score>alternatives.get(result))alternatives.set(result,score);
+        }
+    }
+    return Array.from(alternatives.keys()).sort((a,b)=>alternatives.get(b)-alternatives.get(a)).slice(0,4);
+}
+
+export function matchSwipe(points,centers,entries,guesses,syllables,lookup){
+    const original=matchPath(points,centers,entries,guesses,syllables,lookup);
+    if(points.length<3 || !lookup)return original;
+    const turns=[points[0]];
+    corners(points,0,points.length-1,turns);
+    if(turns.length<3 || turns.length>32)return original;
+    const symbols=Object.keys(centers);
+    const drift=turns.reduce((sum,p)=>sum+Math.min(...symbols.map(k=>Math.hypot(p[0]-centers[k][0],p[1]-centers[k][1]))),0)/turns.length;
+    const known=new Set(entries.map(entry=>entry[0]));
+
+    const context=options=>contextualStarts(options,centers,syllables,lookup);
+    if(known.has(original[0]) && turnError(turns,original[0].split('').map(k=>centers[k]))<.52)
+        return original;
+    if(drift<.17 && original.length)
+        return Array.from(new Set(original.slice(0,1).concat(context(original),original)));
+    const observed=profile(points,24);
+    const candidates=new Map();
+    const frequencies=new Map(entries);
+    const shapeCosts=new Map();
+    function collect(readings){
+        for(let i=0;i<Math.min(32,readings.length);i++){
+            const key=readings[i];
+            const prior=.055*Math.log(1+i)-.024*Math.log(1+(frequencies.get(key)||0));
+            if(shapeCosts.has(key)){
+                candidates.set(key,Math.min(candidates.get(key),shapeCosts.get(key)+prior));
+                continue;
+            }
+            const path=key.split('').map(k=>centers[k]);
+            if(path.length<2)continue;
+            let best=Infinity;
+            for(const bend of [0,.12,.22,.32]){
+                const rounded=path.map((p,j)=>j===0||j===path.length-1?p:[
+                    p[0]*(1-bend)+bend*(path[j-1][0]+path[j+1][0])/2,
+                    p[1]*(1-bend)+bend*(path[j-1][1]+path[j+1][1])/2]);
+                const template=profile(rounded,24);
+                let error=0;
+                for(let j=0;j<48;j+=2)error+=Math.hypot(observed.samples[j]-template.samples[j],observed.samples[j+1]-template.samples[j+1]);
+                const score=error/24+turnError(turns,rounded)+.02*Math.abs(observed.length-template.length)+.48*bend;
+                best=Math.min(best,score);
+            }
+            shapeCosts.set(key,best);
+            candidates.set(key,best+prior);
+        }
+    }
+    collect(original);
+    for(const bend of [.17,.3]){
+        const restored=restoreTurns(turns,bend);
+        collect(matchPath(restored,centers,entries,traceReadings(restored,centers),syllables,lookup));
+    }
+    const ranked=Array.from(candidates.keys()).sort((a,b)=>candidates.get(a)-candidates.get(b));
+    if(original.length && candidates.has(original[0]) && (known.has(original[0]) || known.has(original[1])) && candidates.get(original[0])-candidates.get(ranked[0])<.48)
+        return Array.from(new Set(original.concat(ranked))).slice(0,96);
+    const suggestions=context(ranked);
+    return Array.from(new Set(ranked.slice(0,1).concat(suggestions,ranked))).slice(0,96);
 }

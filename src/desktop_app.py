@@ -87,6 +87,7 @@ class DesktopController(Controller):
         self.owner = None
         self.reading = ""
         self.reading_origin = None
+        self.swiped_start = False
         self.reading_choices = []
         self.highlight = 0
         self.selected_candidate = 0
@@ -170,6 +171,7 @@ class DesktopController(Controller):
     def clear_reading(self):
         self.reading = ""
         self.reading_origin = None
+        self.swiped_start = False
         self.reading_choices = []
         self.highlight = 0
 
@@ -219,15 +221,27 @@ class DesktopController(Controller):
     def swipeReadings(self, endpoints):
         return [entry for pair in endpoints for entry in swipe_buckets().get(pair, ())]
 
+    @Property(bool, notify=desktopChanged)
+    def readingStartedWithSwipe(self):
+        return self.swiped_start and bool(self.reading)
+
     @Slot("QStringList")
-    def phoneticTrace(self, alternatives):
+    @Slot("QStringList", "QStringList")
+    def phoneticTrace(self, alternatives, contextual=()):
         if self.pendingCount or not alternatives or not self.gesture_still_current() or not self.prepare_reading(self.gesture_origin):
             return
         options = [self.reading + suffix for suffix in alternatives[:128]
                    if suffix and len(self.reading + suffix) <= 60 and all(c in SYMBOLS for c in suffix)]
         if not options:
             return
-        self.reading, self.reading_choices = convert(options)
+        if not self.reading:
+            self.swiped_start = True
+        raw = convert(options)[0] if contextual else None
+        valid = [word for word in contextual[:4] if 0 < len(word) <= 60 and all(c in SYMBOLS for c in word)]
+        combined = list(dict.fromkeys(options[:1] + valid + options[1:]))
+        self.reading, self.reading_choices = convert(combined)
+        if raw:
+            self.reading = raw
         self.highlight = 0
         self.status = "Choose a candidate or keep typing." if self.reading_choices else "Continue the reading or use Backspace."
         self.changed.emit()
