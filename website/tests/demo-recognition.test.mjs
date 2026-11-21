@@ -25,8 +25,8 @@ test('recognition ranks alternatives and tolerates imprecise aim', () => {
     [x + (index % 2 ? 0.13 : -0.11), y + (index % 2 ? -0.09 : 0.08)]);
   const choices = recognize(points);
   assert.equal(choices[0], 'world');
-  assert.equal(choices.length, 3);
-  assert.equal(new Set(choices).size, 3);
+  assert.equal(choices.length, 9);
+  assert.equal(new Set(choices).size, 9);
 });
 
 test('a single point and an off-board path produce no suggestions', () => {

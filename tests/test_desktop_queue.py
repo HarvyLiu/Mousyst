@@ -243,3 +243,31 @@ def test_mixed_delayed_sequences_match_sequential_edits(keyboard):
         while c.executor.calls:
             c.executor.finish()
         assert c.output.text == reference.text
+
+
+def test_zhuyin_highlight_then_commit_once(keyboard):
+    for symbol in "ㄕˋ":
+        keyboard.phonetic(symbol)
+    assert len(keyboard.readingChoices) > 9
+    keyboard.cycleSuggestion(7)
+    assert keyboard.highlightedReading == 7 and keyboard.output.text == ""
+    for symbol in "ㄐㄧㄝˋ":
+        keyboard.phonetic(symbol)
+    assert keyboard.readingChoices[0] == "世界"
+    keyboard.key(" ")
+    keyboard.commitReading(0)
+    assert keyboard.output.text == "世界" and keyboard.pronunciation == ""
+
+
+def test_zhuyin_backspace_and_changed_field(keyboard):
+    for symbol in "ㄕˊ":
+        keyboard.phonetic(symbol)
+    keyboard.key("Back")
+    assert keyboard.pronunciation == "ㄕ" and not keyboard.output.events
+    keyboard.phonetic("ˋ")
+    keyboard.output.identity = (2,)
+    keyboard.commitReading(0)
+    assert keyboard.output.text == "" and keyboard.pronunciation == ""
+    keyboard.output.password = True
+    keyboard.phonetic("ㄕ")
+    assert keyboard.pronunciation == ""

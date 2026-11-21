@@ -74,6 +74,6 @@ export function makeRecognizer(words) {
       const {entry, endpoints} = candidate;
       candidate.score = alignedDistance(path, entry.path) + endpoints * 0.8 + Math.log1p(entry.rank) * 0.012;
     }
-    return finalists.sort((a, b) => a.score - b.score).slice(0, 3).map(result => result.entry.word);
+    return finalists.sort((a, b) => a.score - b.score).slice(0, 9).map(result => result.entry.word);
   };
 }

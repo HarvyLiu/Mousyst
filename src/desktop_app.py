@@ -30,6 +30,7 @@ from desktop import DesktopInput, MiddleButtonHook
 from input_session import accepts_insertion, matches_owner
 from keymap import shifted_text
 from practice import Controller
+from zhuyin import ROWS, SYMBOLS, dictionary
 from settings import DEFAULTS, Settings
 from shelf_tools import ShelfTools
 from swipe_learning import SwipeLearning
@@ -77,6 +78,10 @@ class DesktopController(Controller):
         self.output = None if smoke else DesktopInput()
         self.observer = None if smoke else FocusObserver()
         self.owner = None
+        self.reading = ""
+        self.reading_origin = None
+        self.reading_choices = []
+        self.highlight = 0
         self.selected_candidate = 0
         self.current_field = None
         self.suppressed = None
@@ -139,9 +144,68 @@ class DesktopController(Controller):
     def pendingCount(self):
         return len(self.pending_inputs) + int(self.busy or self.no_match)
 
+    @Property(str, notify=desktopChanged)
+    def pronunciation(self):
+        return self.reading
+
+    @Property("QStringList", constant=True)
+    def phoneticRows(self):
+        return list(ROWS)
+
+    @Property("QStringList", notify=desktopChanged)
+    def readingChoices(self):
+        return self.reading_choices
+
+    @Property(int, notify=desktopChanged)
+    def highlightedReading(self):
+        return self.highlight
+
+    def clear_reading(self):
+        self.reading = ""
+        self.reading_origin = None
+        self.reading_choices = []
+        self.highlight = 0
+
+    @Slot(str)
+    def phonetic(self, symbol):
+        if symbol not in SYMBOLS or self.pendingCount or len(self.reading) >= 60:
+            return
+        if not self.reading:
+            self.cancel()
+            self.reading_origin = self.snapshot()
+            if self.output and not accepts_insertion(self.reading_origin, self.reading_origin):
+                self.status = "Click a text field, then middle-click to type with Zhuyin."
+                self.changed.emit()
+                return
+        self.update_reading(self.reading + symbol)
+
+    def update_reading(self, reading):
+        self.reading = reading
+        self.reading_choices = dictionary().get(reading, []) if reading else []
+        self.highlight = 0
+        self.status = "Choose a candidate or keep typing." if self.reading_choices else "Continue the reading or use Backspace."
+        self.changed.emit()
+
+    @Slot(int)
+    def commitReading(self, index):
+        if not 0 <= index < len(self.reading_choices):
+            return
+        word = self.reading_choices[index]
+        if self.output and not accepts_insertion(self.reading_origin, self.snapshot()):
+            self.cancel()
+            self.status = "The text field changed. Enter the reading again."
+        elif self.dispatch(lambda: self.send_text(word)):
+            self.clear_reading()
+            self.editor.external("" if self.output else self.editor.text + word)
+            self.status = "Zhuyin · Click the next reading."
+        self.changed.emit()
+
     @Slot(int)
     def cycleSuggestion(self, steps):
-        if self.candidates:
+        if self.reading:
+            self.highlight = max(0, min(len(self.reading_choices)-1, self.highlight + steps))
+            self.changed.emit()
+        elif self.candidates:
             index = max(
                 0, min(len(self.candidates) - 1, self.selectedSuggestion + steps)
             )
@@ -322,6 +386,14 @@ class DesktopController(Controller):
 
     @Slot(str)
     def key(self, value):
+        if self.reading:
+            if value in (" ", "Enter"):
+                self.commitReading(self.highlight)
+                return
+            if value == "Back":
+                self.update_reading(self.reading[:-1])
+                return
+            self.clear_reading()
         if value == "Escape":
             self.cancel()
             self.hideRequested.emit()
@@ -492,6 +564,7 @@ class DesktopController(Controller):
         if generation < 0:
             super().receive(generation, revision, words, latency)
             if generation == -1:
+                self.recognizer.candidate_limit = 9
                 self.sync_personal_words()
                 self.status = (
                     "Middle-click to show or hide · Right-click a letter for its symbol"
@@ -732,6 +805,7 @@ class DesktopController(Controller):
 
     @Slot()
     def cancel(self):
+        self.clear_reading()
         self.learning_points = None
         if self.inflight_job is not None:
             self.inflight_job.cancel()

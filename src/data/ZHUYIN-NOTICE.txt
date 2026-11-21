@@ -1,0 +1,4 @@
+The unmodified zhuyin.csv file is tsi.csv from the Chewing project.
+Copyright (c) 2025 libchewing Core Team. LGPL-2.1-or-later.
+Source: https://github.com/chewing/libchewing-data/blob/c44e81aef24b06f1509f19e1be54c99812d0c43f/dict/chewing/tsi.csv
+The license is included in ZHUYIN-LICENSE.txt.

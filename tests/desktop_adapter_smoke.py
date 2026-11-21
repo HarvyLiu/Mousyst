@@ -109,12 +109,23 @@ def main():
         controller.alternative(0)
         time.sleep(0.1)
         assert json.loads(path.read_text()) == "help ", "Stale candidate modified text"
+        for mark in "ㄕˋㄐㄧㄝˋ":
+            controller.phonetic(mark)
+        assert controller.readingChoices[0] == "世界"
+        unchanged = json.loads(path.read_text())
+        controller.cycleSuggestion(1)
+        assert json.loads(path.read_text()) == unchanged
+        controller.cycleSuggestion(-1)
+        controller.key(" ")
+        time.sleep(0.15)
+        assert json.loads(path.read_text()).count("世界") == 1
         controller.observer.start()
         app.processEvents()
         report = {
             "ok": True,
             "checks": [
                 "real Unicode typing",
+                "Zhuyin composition, browsing and single commit",
                 "Ctrl+A",
                 "caret scrub",
                 "UI Automation snapshot",

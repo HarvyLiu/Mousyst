@@ -8,7 +8,7 @@ type Stroke = {id:number; letter:string; start:Point; points:Point[]; dragged:bo
 const demo = document.querySelector<HTMLElement>('#typing-demo')!;
 const text = demo.querySelector<HTMLTextAreaElement>('textarea')!;
 const board = demo.querySelector<HTMLElement>('.letter-board')!;
-const symbols = demo.querySelector<HTMLElement>('.symbol-board')!;
+const symbols = demo.querySelector<HTMLElement>('#symbols')!;
 const layer = demo.querySelector<HTMLButtonElement>('#layer')!;
 const shift = demo.querySelector<HTMLButtonElement>('#demo-shift')!;
 const status = demo.querySelector<HTMLElement>('.status')!;
@@ -25,6 +25,82 @@ let sequence = 0;
 let worker: Worker | undefined;
 let wheelRemainder = 0;
 
+const ime = demo.querySelector<HTMLButtonElement>('#ime')!;
+const zhBoard = demo.querySelector<HTMLElement>('#zh-board')!;
+const readingLabel = demo.querySelector<HTMLElement>('#reading')!;
+const more = demo.querySelector<HTMLButtonElement>('#more-choices')!;
+const picker = demo.querySelector<HTMLElement>('#all-choices')!;
+let mandarin = false;
+let reading = '';
+let choices: string[] = [];
+let highlight = 0;
+let revision = 0;
+let zhWorker: Worker | undefined;
+let origin: {value:string; start:number; end:number} | null = null;
+
+function closePicker() {
+  picker.hidden = true;
+  picker.replaceChildren();
+  more.setAttribute('aria-expanded','false');
+}
+
+function resetReading() {
+  reading = '';
+  choices = [];
+  highlight = 0;
+  origin = null;
+  revision++;
+  readingLabel.textContent = mandarin ? '注音 · ㄕˋㄐㄧㄝˋ → 世界' : '';
+  closePicker();
+}
+
+function setReading(value:string) {
+  if (!value) {resetReading(); refreshSuggestions(); return;}
+  if (!origin) origin = {value:text.value,start:text.selectionStart,end:text.selectionEnd};
+  reading = value;
+  choices = [];
+  highlight = 0;
+  closePicker();
+  readingLabel.textContent = value;
+  refreshSuggestions();
+  try {
+    if (!zhWorker) {
+      zhWorker = new Worker(new URL('./zhuyin-worker.ts',import.meta.url),{type:'module'});
+      zhWorker.onmessage = ({data}) => {
+        if (data.id !== revision) return;
+        choices = data.words ?? [];
+        notice(data.failed ? 'Dictionary unavailable.' : choices.length ? '' : 'Continue the reading or use Backspace.',
+               data.failed ? '無法載入詞庫。' : choices.length ? '' : '請繼續輸入注音或按退格鍵。');
+        refreshSuggestions();
+      };
+      zhWorker.onerror = () => {zhWorker?.terminate(); zhWorker=undefined;notice('Dictionary unavailable.','無法載入詞庫。');};
+    }
+    zhWorker.postMessage({id:++revision,reading});
+  } catch {notice('Dictionary unavailable.','無法載入詞庫。');}
+}
+
+function pick(index:number) {
+  if (!reading) {choose(index);return;}
+  if (choices[index] && origin?.value===text.value && origin.start===text.selectionStart && origin.end===text.selectionEnd) {
+    insert(choices[index]);
+    owner=null;
+  }
+  resetReading(); notice(); refreshSuggestions();
+}
+function currentChoices() {
+  return reading ? choices : ownsWord() && !edits.length && owner ? owner.candidates : [];
+}
+more.addEventListener('click',()=>{
+  if (!picker.hidden) { closePicker(); return; }
+  picker.replaceChildren(...currentChoices().map((word,i)=>{
+    const button=document.createElement('button');
+    button.type='button';button.textContent=word;
+    button.addEventListener('click',()=>{closePicker();pick(i)});
+    return button;
+  }));
+  picker.hidden=false;more.setAttribute('aria-expanded','true');
+});
+
 function notice(en = '', zh = '') {
   status.dataset.en = en;
   status.dataset.zh = zh;
@@ -38,10 +114,16 @@ function ownsWord() {
 
 function refreshSuggestions() {
   const active = ownsWord() && edits.length === 0 ? owner : null;
+  const list=currentChoices();
+  const selected=reading ? highlight : active?.selected ?? 0;
+  const offset=3*Math.floor(selected/3);
+  ime.disabled=edits.length>0;
+  more.disabled=list.length<=3;
+  if (more.disabled) closePicker();
   buttons.forEach((button,i) => {
-    button.textContent = active?.candidates[i] ?? '';
+    button.textContent = list[offset+i] ?? '';
     button.disabled = !button.textContent;
-    button.setAttribute('aria-pressed',String(active?.selected === i));
+    button.setAttribute('aria-pressed',String(selected === offset+i && list.length>0));
   });
   undo.disabled = !active;
 }
@@ -105,6 +187,11 @@ function drain() {
 }
 
 function key(value: string) {
+  if (reading) {
+    if (value===' ' || value==='\n') { if(choices.length)pick(highlight);return; }
+    if (value==='Backspace') {setReading(reading.slice(0,-1));return;}
+    resetReading();
+  }
   notice();
   edits.push({kind:'key',key:value});
   drain();
@@ -152,16 +239,17 @@ function choose(i: number) {
   }
   refreshSuggestions();
 }
-buttons.forEach((button,i)=>button.addEventListener('click',()=>choose(i)));
+buttons.forEach((button,i)=>button.addEventListener('click',()=>pick(3*Math.floor((reading ? highlight : owner?.selected ?? 0)/3)+i)));
 strip.addEventListener('wheel',event=>{
-  if (!ownsWord() || !owner || edits.length || !event.deltaY) return;
+  if (!currentChoices().length || !event.deltaY) return;
   event.preventDefault();
   const pixels = event.deltaMode===1 ? event.deltaY*40 : event.deltaMode===2 ? Math.sign(event.deltaY)*50 : event.deltaY;
   wheelRemainder+=pixels;
   const steps=Math.trunc(wheelRemainder/50);
   if (!steps) return;
   wheelRemainder-=steps*50;
-  choose(Math.max(0,Math.min(owner.candidates.length-1,owner.selected+steps)));
+  if (reading) {highlight=Math.max(0,Math.min(choices.length-1,highlight+steps));refreshSuggestions();}
+  else if(owner) choose(Math.max(0,Math.min(owner.candidates.length-1,owner.selected+steps)));
 },{passive:false});
 undo.addEventListener('click',()=>{
   if (ownsWord() && owner) insert(owner.before,owner.start,owner.end);
@@ -241,6 +329,7 @@ for (const button of letters) button.addEventListener('click',event=>{
 });
 
 function invalidate() {
+  resetReading();
   cancelStroke();
   edits.length=0;owner=null;wheelRemainder=0;notice();refreshSuggestions();
 }
@@ -259,14 +348,28 @@ window.addEventListener('blur',invalidate);
 window.addEventListener('resize',cancelStroke);
 demo.querySelector('.demo-keyboard')!.addEventListener('mousedown',event=>event.preventDefault());
 layer.addEventListener('click',()=>{
-  cancelStroke();
-  board.hidden=!board.hidden;
-  symbols.hidden=!board.hidden;
-  layer.textContent=board.hidden?'ABC':'123';
-  layer.setAttribute('aria-pressed',String(board.hidden));
+  resetReading();cancelStroke();closePicker();
+  symbols.hidden=!symbols.hidden;
+  renderLayer();refreshSuggestions();
+});
+function renderLayer() {
+  board.hidden=mandarin || !symbols.hidden;
+  zhBoard.hidden=!mandarin || !symbols.hidden;
+  readingLabel.hidden=zhBoard.hidden;
+  layer.textContent=symbols.hidden?'123':mandarin?'注音':'ABC';
+  layer.setAttribute('aria-pressed',String(!symbols.hidden));
   shift.disabled=board.hidden;
   setShift(false);
+}
+ime.addEventListener('click',()=>{
+  if (edits.length) return;
+  mandarin=!mandarin;symbols.hidden=true;invalidate();
+  ime.textContent=mandarin?'EN':'注音';
+  ime.setAttribute('aria-pressed',String(mandarin));
+  renderLayer();
 });
+zhBoard.querySelectorAll<HTMLButtonElement>('[data-sound]').forEach(button=>
+  button.addEventListener('click',()=>{if(reading.length<60)setReading(reading+button.dataset.sound!);}));
 shift.addEventListener('click',()=>setShift(!shifted));
 demo.querySelectorAll<HTMLButtonElement>('[data-char]').forEach(button=>
   button.addEventListener('click',()=>key(button.dataset.char!)));

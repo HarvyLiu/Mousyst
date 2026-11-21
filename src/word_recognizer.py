@@ -33,6 +33,7 @@ class Recognizer:
                     encoding="utf-8"
                 )
             )["words"]
+        self.candidate_limit = 3
         self.words = words
         self.templates = np.asarray([word_path(word) for word in words])
         self._indices = {word: i for i, word in enumerate(words)}
@@ -92,4 +93,4 @@ class Recognizer:
             score = previous[-1] / 32 + endpoint[index] * 0.8 + prior[index]
             score -= 0.055 * np.log1p(counts.get(words[index].lower(), 0))
             ranked.append((score, int(index)))
-        return [words[i] for _, i in sorted(ranked)[:3]]
+        return [words[i] for _, i in sorted(ranked)[:self.candidate_limit]]

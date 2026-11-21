@@ -9,6 +9,8 @@ Window {
     visible:false
     property bool settingsOpen:false
     property bool numbers:false
+    property bool zhuyin:false
+    property bool allChoices:false
     property string shelf:""
     onSettingsOpenChanged: if (settingsOpen) shelf = ""
     function toggleShelf(name) {
@@ -66,6 +68,8 @@ Window {
                     onPositionChanged:mouse=>{if(pressed){root.x+=mouse.x-origin.x;root.y+=mouse.y-origin.y}}
                     Rectangle {anchors.centerIn:parent;width:36;height:3;radius:2;color:'#55555f'}
                 }
+                Key {objectName:"languageToggle";text:root.zhuyin?"EN":"注音"; direct:false;implicitHeight:27;implicitWidth:48
+                    onReleased:{if(!mousyst.tools.ready())return;board.abort();mousyst.cancel();root.numbers=false;root.shelf="";root.zhuyin=!root.zhuyin}}
                 Repeater {
                     model:[["edit","Edit"],["favorites","Shortcuts"],["phrases","Phrases"]]
                     Key {
@@ -81,22 +85,31 @@ Window {
             }
             RowLayout {
                 id:suggestions;objectName:'desktopSuggestions';Layout.minimumHeight:34;Layout.preferredHeight:34;Layout.maximumHeight:34
-                property int candidateIndex:mousyst.selectedSuggestion
+                property bool composing: mousyst.pronunciation.length > 0
+                property var choices: composing ? mousyst.readingChoices : mousyst.suggestions
+                property int candidateIndex: composing ? mousyst.highlightedReading : mousyst.selectedSuggestion
+                property int page:0
+                onCandidateIndexChanged: page=Math.floor(candidateIndex/3)
+                Connections {target:mousyst; function onDesktopChanged(){if(suggestions.lastReading!==mousyst.pronunciation){suggestions.lastReading=mousyst.pronunciation;suggestions.page=0}}}
+                property string lastReading:""
                 property int session:mousyst.suggestionSession
                 property real wheelDelta:0
-                onSessionChanged:wheelDelta=0
-                Repeater {model:3;Key {required property int index;objectName:'desktopSuggestion'+index;direct:false;visible:!mousyst.needsSpelling;text:mousyst.suggestions[index]||'';enabled:mousyst.pendingCount===0 && index<mousyst.suggestions.length;opacity:enabled?1:.25;checked:enabled&&index===suggestions.candidateIndex;Layout.fillWidth:true;implicitHeight:34;onReleased:mousyst.alternative(index)}}
+                onSessionChanged:{wheelDelta=0;page=0;root.allChoices=false}
+                onChoicesChanged:if(choices.length<=3)root.allChoices=false
+                Repeater {model:3;Key {required property int index;objectName:'desktopSuggestion'+index;direct:false;visible:!mousyst.needsSpelling;readonly property int choice:suggestions.page*3+index;text:suggestions.choices[choice]||'';enabled:mousyst.pendingCount===0 && choice<suggestions.choices.length;opacity:enabled?1:.25;checked:enabled&&choice===suggestions.candidateIndex;Layout.fillWidth:true;implicitHeight:34;onReleased:suggestions.composing?mousyst.commitReading(choice):mousyst.alternative(choice)}}
+                Key {objectName:"expandSuggestions";text:root.allChoices?"▴":"▾";Accessible.name:"More suggestions";direct:false;visible:suggestions.choices.length>3;implicitHeight:34
+                    onReleased:root.allChoices=!root.allChoices}
                 Key {text:'';iconName:'undo';direct:false;visible:!mousyst.needsSpelling;enabled:mousyst.pendingCount===0 && mousyst.suggestions.length>0;opacity:enabled?1:.25;implicitHeight:34;onReleased:mousyst.undoWord()}
                 Key {visible:mousyst.needsSpelling;direct:false;text:mousyst.isSpelling?'Insert word':'Spell word';Layout.fillWidth:true;implicitHeight:34;onReleased:mousyst.isSpelling?mousyst.finishSpelling():mousyst.spellWord()}
                 Key {visible:mousyst.needsSpelling;direct:false;text:'Cancel pending';Layout.fillWidth:true;implicitHeight:34;onReleased:mousyst.cancel()}
                 MouseArea {anchors.fill:parent;acceptedButtons:Qt.NoButton
-                    onWheel:wheel=>{if(mousyst.suggestions.length===0){suggestions.wheelDelta=0;wheel.accepted=false;return}suggestions.wheelDelta+=wheel.angleDelta.y;let steps=Math.trunc(suggestions.wheelDelta/120);if(steps){suggestions.wheelDelta-=steps*120;mousyst.cycleSuggestion(-steps)}wheel.accepted=true}
+                    onWheel:wheel=>{if(suggestions.choices.length===0){suggestions.wheelDelta=0;wheel.accepted=false;return}suggestions.wheelDelta+=wheel.angleDelta.y;let steps=Math.trunc(suggestions.wheelDelta/120);if(steps){suggestions.wheelDelta-=steps*120;mousyst.cycleSuggestion(-steps)}wheel.accepted=true}
                 }
             }
             RowLayout {visible:prefs.layout==='Full';spacing:5;Repeater {model:12;Key {required property int index;text:'F'+(index+1);Layout.fillWidth:true}}}
             RowLayout {visible:prefs.layout!=='Compact';spacing:5;Repeater {model:['1','2','3','4','5','6','7','8','9','0','-','='];Key {required property string modelData;text:modelData;Layout.fillWidth:true;repeatable:true}}}
             Item {
-                id:board;objectName:'desktopLetters';visible:!root.numbers&&!root.shelf;Layout.preferredWidth:14*root.pitch;Layout.preferredHeight:3*root.pitch
+                id:board;objectName:'desktopLetters';visible:!root.allChoices&&!root.zhuyin&&!root.numbers&&!root.shelf;Layout.preferredWidth:14*root.pitch;Layout.preferredHeight:3*root.pitch
                 property var path:[]
                 property var visualPoints:[]
                 function clearVisual(){visualPoints=[];fadeClock.stop();trail.requestPaint()}
@@ -154,7 +167,7 @@ Window {
                 Key {x:12.5*root.pitch;y:2*root.pitch;width:1.5*root.pitch-5;text:'';iconName:'shift';value:'Shift';checked:mousyst.shifted}
             }
             Item {
-                id:numberBoard;objectName:'desktopNumbers';visible:root.numbers&&!root.shelf
+                id:numberBoard;objectName:'desktopNumbers';visible:!root.allChoices&&root.numbers&&!root.shelf
                 Layout.preferredWidth:14*root.pitch;Layout.preferredHeight:3*root.pitch
                 property bool pad:prefs.numberFormat==='Numpad'
                 Repeater {
@@ -175,6 +188,28 @@ Window {
                     onReleased:mousyst.setPreference('numberFormat',numberBoard.pad?'Rows':'Numpad')
                 }
             }
+            ColumnLayout {
+                objectName:"phoneticBoard";visible:!root.allChoices&&root.zhuyin&&!root.numbers&&!root.shelf
+                Layout.preferredWidth:14*root.pitch;Layout.preferredHeight:3*root.pitch;spacing:2
+                Repeater {model:mousyst.phoneticRows
+                    RowLayout {id:soundRow;required property string modelData;Layout.fillWidth:true;spacing:3
+                        Repeater {model:soundRow.modelData.split("")
+                            Key {required property string modelData;text:modelData;direct:false;Layout.fillWidth:true;Layout.preferredHeight:root.pitch*.67;onReleased:mousyst.phonetic(modelData)}
+                        }
+                    }
+                }
+            }
+            GridView {
+                objectName:"candidateGrid";visible:root.allChoices; Layout.preferredWidth:14*root.pitch;Layout.preferredHeight:3*root.pitch
+                cellWidth:width/4;cellHeight:root.pitch*.68;clip:true
+                model:root.allChoices?suggestions.choices:[]
+                delegate:Item {id:choiceTile;required property string modelData;required property int index
+                    width:GridView.view.cellWidth;height:GridView.view.cellHeight
+                    Key {anchors.fill:parent;anchors.margins:2;text:choiceTile.modelData;direct:false;checked:suggestions.candidateIndex===choiceTile.index
+                        onReleased:{const selected=choiceTile.index;if(suggestions.composing)mousyst.commitReading(selected);else mousyst.alternative(selected);root.allChoices=false}}
+                }
+                ScrollBar.vertical:ScrollBar{}
+            }
             ShelfPanel {
                 objectName:"desktopShelfPanel"; visible:root.shelf!==""
                 section:root.shelf; pitch:root.pitch
@@ -182,7 +217,8 @@ Window {
                 Layout.preferredWidth:14*root.pitch; Layout.preferredHeight:3*root.pitch
             }
             RowLayout {spacing:5
-                Key {objectName:'numericLayerToggle';direct:false;text:root.numbers||root.shelf?'ABC':'&123';Layout.preferredWidth:1.4*root.pitch-5;onReleased:{board.abort();board.clearVisual();root.numbers=root.shelf?false:!root.numbers;root.shelf=""}}
+                Key {objectName:'numericLayerToggle';direct:false;text:root.numbers||root.shelf?(root.zhuyin?'注音':'ABC'):'&123';Layout.preferredWidth:1.4*root.pitch-5;onReleased:{root.allChoices=false;if(mousyst.pronunciation)mousyst.cancel();board.abort();board.clearVisual();root.numbers=root.shelf?false:!root.numbers;root.shelf=""}}
+                Key {visible:root.zhuyin&&!root.numbers&&!root.shelf;text:'';iconName:'backspace';value:'Back';repeatable:true}
                 Key {text:'Ctrl';checked:mousyst.activeModifiers.indexOf('Ctrl')>=0}
                 Key {text:'';iconName:'windows';value:'Win';checked:mousyst.activeModifiers.indexOf('Win')>=0}
                 Key {text:'Alt';checked:mousyst.activeModifiers.indexOf('Alt')>=0}
@@ -212,7 +248,7 @@ Window {
                 ColumnLayout {spacing:2;Key {text:'';iconName:'up';value:'Up';repeatable:true;implicitHeight:(root.pitch-7)/2}Key {text:'';iconName:'down';value:'Down';repeatable:true;implicitHeight:(root.pitch-7)/2}}
             }
             RowLayout {visible:prefs.layout!=='Compact';spacing:5;Repeater {model:['Home','End','Delete','PageUp','PageDown'];Key {required property string modelData;text:modelData;Layout.fillWidth:true}}}
-            Label {text:(mousyst.pendingCount ? mousyst.pendingCount+' pending · ' : '')+mousyst.message;color:'#858590';font.pixelSize:10;Layout.fillWidth:true;elide:Text.ElideRight}
+            Label {text:(mousyst.pronunciation ? mousyst.pronunciation+'   ' : '')+(mousyst.pendingCount ? mousyst.pendingCount+' pending · ' : '')+mousyst.message;color:mousyst.pronunciation?prefs.accent:'#858590';font.pixelSize:root.zhuyin?15:10;Layout.fillWidth:true;elide:Text.ElideRight}
         }
     }
     ApplicationWindow {
