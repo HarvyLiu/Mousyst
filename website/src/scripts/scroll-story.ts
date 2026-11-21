@@ -90,7 +90,7 @@ function render() {
   story.dataset.activeScene = String(active);
   scenes.forEach((scene, i) => {
     const local = (p * 4 - i);
-    const visibility = staticMode ? (i === active ? 1 : 0) :
+    const visibility = staticMode ? 1 :
       (i === 0 ? 1 : smooth((local + .08) / .15)) *
       (i === 3 ? 1 : 1 - smooth((local - .88) / .20));
     scene.style.opacity = String(visibility);

@@ -34,6 +34,14 @@ const symbols = ['1234567890', '!@#$%&*()', '+-=<>/[]{}', '.,;:\'"?_\\^'];
       </div>
     </div>
     <p class="status" role="status"></p>
+    <details id="reply-tools">
+      <summary data-en="Try saved replies" data-zh="試用常用回覆">Try saved replies</summary>
+      <p data-en="Write a reply once, then insert it wherever the caret is in the demo. Your saved reply lasts until you leave this page." data-zh="寫下一句常用回覆，再將它插入上方輸入框的游標位置。離開本頁後就會清除這句回覆。">Write a reply once, then insert it wherever the caret is in the demo. Your saved reply lasts until you leave this page.</p>
+      <label for="reply-draft" data-en="Reply to save" data-zh="要儲存的回覆">Reply to save</label>
+      <input id="reply-draft" value="On my way!" maxlength="500" autocomplete="off"/>
+      <button type="button" id="save-reply" data-en="Save reply" data-zh="儲存回覆">Save reply</button>
+      <button type="button" id="insert-reply" disabled data-en="Insert saved reply" data-zh="插入已儲存的回覆">Insert saved reply</button>
+    </details>
     <p class="hint" data-en="After a swipe, click a suggestion or scroll over the suggestions to replace the word. Your text stays in this tab." data-zh="滑行後可點擊候選字，或在候選列上滾動以替換單字。輸入內容只保留在這個分頁。">After a swipe, click a suggestion or scroll over the suggestions to replace the word. Your text stays in this tab.</p>
     <p class="credit"><span data-en="English vocabulary derived from" data-zh="英文詞庫來源為">English vocabulary derived from</span> <a href="https://github.com/rspeer/wordfreq#license">wordfreq 3.1.1</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> · <a href="/demo-credits/ATTRIBUTION.md" data-en="Attribution" data-zh="來源說明">Attribution</a></p>
     <noscript><p>Enable JavaScript to use the on-screen keyboard. 請啟用 JavaScript 以使用螢幕鍵盤。</p></noscript>
@@ -41,6 +49,9 @@ const symbols = ['1234567890', '!@#$%&*()', '+-=<>/[]{}', '.,;:\'"?_\\^'];
 </Shell>
 <script>import '../demo/controller';</script>
 <style>
+#reply-tools{margin-top:18px;padding:14px 16px;border:1px solid var(--line);border-radius:8px}
+#reply-tools summary{cursor:pointer;color:var(--mint)}#reply-tools p{font-size:14px;color:#bac7bd}
+#reply-tools input,#reply-tools button{font:inherit;background:#252d28;color:var(--fg);border:1px solid #49544c;border-radius:5px;padding:8px;max-width:100%;margin:2px}#reply-tools button:disabled{opacity:.5}
 .demo{width:min(760px,100%);margin:auto;padding:55px clamp(14px,4vw,36px) 65px}
 .demo h1{font-size:clamp(45px,7vw,78px);margin:0 0 19px}
 .instructions,.hint,.credit{color:var(--muted);font-size:14px}

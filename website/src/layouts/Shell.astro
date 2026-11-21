@@ -5,8 +5,9 @@ const { title = 'Mousyst — Your mouse. Your keyboard.', lang = 'en', docs = fa
 <header><a class="brand" href="/" aria-label="Mousyst home"><img src="/logo.svg" alt=""/>mousyst<span class="beta">DESKTOP PREVIEW</span></a><nav aria-label="Main navigation"><a href="/#how" data-en="The experience" data-zh="使用體驗">The experience</a><a href="/demo/" data-en="Demo" data-zh="試用">Demo</a><a href="/docs/" data-en="Documentation" data-zh="使用文件">Documentation</a><a href="https://github.com/HarvyLiu/Mousyst" target="_blank" rel="noreferrer">GitHub ↗</a><button id="language" aria-label="Switch language">繁體中文</button></nav></header>
 <main><slot/></main><footer><a class="brand" href="/">mousyst</a><span data-en="Made for a different way to type." data-zh="用滑鼠，探索另一種輸入方式。">Made for a different way to type.</span><a href="/docs/" data-en="Read the docs ↗" data-zh="閱讀文件 ↗">Read the docs ↗</a></footer>
 <script>
-const stored = localStorage.getItem('mousyst-language');
-function setLanguage(lang: string) { document.documentElement.lang = lang === 'zh' ? 'zh-Hant' : 'en'; document.querySelectorAll<HTMLElement>('[data-en]').forEach(el => { el.textContent = el.dataset[lang] || el.dataset.en || ''; }); const b = document.querySelector('#language'); if(b) b.textContent = lang === 'en' ? '繁體中文' : 'English'; localStorage.setItem('mousyst-language',lang); }
+let stored: string | null = null;
+try { stored = localStorage.getItem('mousyst-language'); } catch { /* Storage is optional. */ }
+function setLanguage(lang: string) { document.documentElement.lang = lang === 'zh' ? 'zh-Hant' : 'en'; document.querySelectorAll<HTMLElement>('[data-en]').forEach(el => { el.textContent = el.dataset[lang] || el.dataset.en || ''; }); const b = document.querySelector('#language'); if(b) b.textContent = lang === 'en' ? '繁體中文' : 'English'; try { localStorage.setItem('mousyst-language',lang); } catch { /* Use the language for this page. */ } }
 setLanguage(stored === 'zh' ? 'zh' : 'en');
 document.querySelector('#language')?.addEventListener('click',()=>setLanguage(document.documentElement.lang === 'en' ? 'zh' : 'en'));
 const observer = new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('revealed');observer.unobserve(entry.target)}}),{threshold:.12});document.querySelectorAll('.reveal').forEach(el=>observer.observe(el));

@@ -2,7 +2,7 @@ import { keyCenters } from './recognizer.mjs';
 
 type Point = [number, number];
 type Insertion = { start: number; end: number; before: string; after: string; candidates: string[]; selected: number };
-type Edit = {kind:'key'; key:string} | {kind:'word'; id:number; shift:boolean; candidates?:string[]};
+type Edit = {kind:'phrase'; value:string} | {kind:'key'; key:string} | {kind:'word'; id:number; shift:boolean; candidates?:string[]};
 type Stroke = {id:number; letter:string; start:Point; points:Point[]; dragged:boolean; threshold:number};
 
 const demo = document.querySelector<HTMLElement>('#typing-demo')!;
@@ -84,7 +84,10 @@ function drain() {
     const action=edits[0];
     if (action.kind === 'word' && !action.candidates) break;
     edits.shift();
-    if (action.kind === 'key') {
+    if (action.kind === 'phrase') {
+      insert(action.value);
+      owner = null;
+    } else if (action.kind === 'key') {
       applyKey(action.key);
     } else if (action.candidates?.length) {
       const choices = action.candidates.map(word => action.shift ? word[0].toUpperCase()+word.slice(1) : word);
@@ -268,3 +271,26 @@ shift.addEventListener('click',()=>setShift(!shifted));
 demo.querySelectorAll<HTMLButtonElement>('[data-char]').forEach(button=>
   button.addEventListener('click',()=>key(button.dataset.char!)));
 demo.querySelector('#backspace')!.addEventListener('click',()=>key('Backspace'));
+
+const replyTools = demo.querySelector<HTMLDetailsElement>('#reply-tools')!;
+const draft = demo.querySelector<HTMLInputElement>('#reply-draft')!;
+const insertReply = demo.querySelector<HTMLButtonElement>('#insert-reply')!;
+const saveReply = demo.querySelector<HTMLButtonElement>('#save-reply')!;
+let savedReply = '';
+function openLinkedTools() {
+  if (location.hash === '#reply-tools') replyTools.open = true;
+}
+openLinkedTools();
+window.addEventListener('hashchange', openLinkedTools);
+draft.addEventListener('input', () => { saveReply.disabled = !draft.value.trim(); });
+saveReply.addEventListener('click', () => {
+  savedReply = draft.value;
+  insertReply.disabled = false;
+  notice('Reply saved for this visit.', '已儲存回覆，離開本頁後會清除。');
+});
+insertReply.addEventListener('click', () => {
+  notice();
+  edits.push({kind:'phrase', value:savedReply});
+  drain();
+  text.focus({preventScroll:true});
+});

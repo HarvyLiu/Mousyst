@@ -5,6 +5,7 @@ import QtQuick.Layouts
 Item {
     id:panel
     property var prefs:mousyst.preferences
+    function manage(kind) { shelfSettings.manage(kind) }
     signal done()
     signal dragged(real dx,real dy)
     Rectangle {anchors.fill:parent;radius:12;color:'#171719';border.color:'#37373c'}

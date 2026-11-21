@@ -20,7 +20,8 @@ Window {
     }
     readonly property point spaceCenter:spaceBar.mapToItem(root.contentItem,spaceBar.width/2,spaceBar.height/2)
     property var prefs:mousyst.preferences
-    property real pitch:54*prefs.scale
+    property real availableKeyboardWidth: Screen.width
+    property real pitch:Math.min(54*prefs.scale, (availableKeyboardWidth-24)/14)
     width:14*pitch+24
     height:Math.min(body.implicitHeight+20,Screen.desktopAvailableHeight-50)
     color:'transparent'
@@ -31,7 +32,7 @@ Window {
     Rectangle {anchors.fill:parent;radius:12;color:prefs.background;border.color:'#37373c'}
     component Key:Button {
         id:key
-        Accessible.name:text || value || iconName
+        Accessible.name: value === ' ' ? 'Space' : text || value || iconName
         Accessible.role:Accessible.Button
         property string value:text
         property string hint:''
@@ -132,7 +133,14 @@ Window {
                     anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;preventStealing:true
                     onPressed:mouse=>{let x=mouse.x/root.pitch-1,y=mouse.y/root.pitch;let exact=board.letterAt(x,y);if(!exact){mouse.accepted=false;return}board.first=mouse.button===Qt.RightButton?exact:mousyst.aim(x,y);board.clearVisual();board.tracking=true;board.swiping=false;board.path=[{x:x,y:y}];if(mouse.button===Qt.LeftButton)mousyst.hold(board.first)}
                     onPositionChanged:mouse=>{if(!board.tracking||!(pressedButtons&Qt.LeftButton))return;if(mouse.x<0||mouse.y<0||mouse.x>=width||mouse.y>=height){board.abort();return}let p={x:mouse.x/root.pitch-1,y:mouse.y/root.pitch};if(!mousyst.isRepeating&&Math.hypot(p.x-board.path[0].x,p.y-board.path[0].y)>1/3&&mousyst.activeModifiers.length===0){board.swiping=true;mousyst.releaseHold()}board.path.push(p);if(board.swiping)board.paintPoint(p)}
-                    onReleased:mouse=>{if(!board.tracking)return;let repeated=mousyst.isRepeating;mousyst.releaseHold();if(mouse.x>=0&&mouse.y>=0&&mouse.x<width&&mouse.y<height){if(mouse.button===Qt.RightButton&&board.letterAt(mouse.x/root.pitch-1,mouse.y/root.pitch)===board.first)mousyst.secondary(board.first);else if(mouse.button===Qt.LeftButton&&board.swiping){board.path.push({x:mouse.x/root.pitch-1,y:mouse.y/root.pitch});mousyst.stroke(board.path)}else if(mouse.button===Qt.LeftButton&&!repeated)mousyst.key(board.first)}board.abort()}
+                    onReleased:mouse=>{if(!board.tracking)return;let repeated=mousyst.isRepeating;mousyst.releaseHold();if(mouse.x>=0&&mouse.y>=0&&mouse.x<width&&mouse.y<height){if(mouse.button===Qt.RightButton&&board.letterAt(mouse.x/root.pitch-1,mouse.y/root.pitch)===board.first)mousyst.secondary(board.first);else if(mouse.button===Qt.LeftButton && !repeated){
+                            const end={x:mouse.x/root.pitch-1,y:mouse.y/root.pitch}
+                            const distance=Math.hypot(end.x-board.path[0].x,end.y-board.path[0].y)
+                            if(board.swiping || (distance>1/3 && mousyst.activeModifiers.length===0)){
+                                board.path.push(end)
+                                mousyst.stroke(board.path)
+                            } else mousyst.key(board.first)
+                        }}board.abort()}
                     onCanceled:board.abort()
                 }
                 Key {x:0;y:0;width:root.pitch-5;text:'Esc';value:'Escape'}
@@ -170,6 +178,7 @@ Window {
             ShelfPanel {
                 objectName:"desktopShelfPanel"; visible:root.shelf!==""
                 section:root.shelf; pitch:root.pitch
+                onManageRequested: kind => { mousyst.cancel(); root.settingsOpen=true; settingsPanel.manage(kind) }
                 Layout.preferredWidth:14*root.pitch; Layout.preferredHeight:3*root.pitch
             }
             RowLayout {spacing:5
@@ -219,6 +228,6 @@ Window {
         onClosing:root.settingsOpen=false
         onVisibleChanged:if(visible)requestActivate()
         flags:Qt.Window|Qt.FramelessWindowHint
-        SettingsPanel {anchors.fill:parent;onDone:root.settingsOpen=false;onDragged:(dx,dy)=>{settingsWindow.x+=dx;settingsWindow.y+=dy}}
+        SettingsPanel {id:settingsPanel;anchors.fill:parent;onDone:root.settingsOpen=false;onDragged:(dx,dy)=>{settingsWindow.x+=dx;settingsWindow.y+=dy}}
     }
 }

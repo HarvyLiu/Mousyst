@@ -21,6 +21,7 @@ function render() {
   title.style.transform = `translateY(${p * -65}px) scale(${1 - ease(p / .7) * .5})`;
   title.style.opacity = String(1 - ease((p - .35) / .55) * .85);
   intro.querySelectorAll<HTMLElement>('.hero-top,.hero-bottom,.section-line').forEach(el => el.style.opacity = String(1 - ease(p / .25)));
+  intro.querySelector<HTMLElement>('.hero-bottom')!.inert = p >= .25;
   const keyboard = intro.querySelector<HTMLElement>('.hero-keyboard')!;
   keyboard.style.transform = `perspective(1200px) translateY(${-p * innerHeight * .35}px) rotateX(${24 + p * 25}deg) rotateY(${p * -65}deg) rotateZ(${-7 + p * 20}deg) scale(${1 - p * .35})`;
   keyboard.style.opacity = String(1 - ease((p - .65) / .3));

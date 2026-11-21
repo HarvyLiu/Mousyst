@@ -1,0 +1,31 @@
+---
+const tools = [
+  ['Edit a sentence', '編輯句子', 'Select a word, move to the next one, or undo an edit from the Edit panel.', '開啟 Edit 面板即可選取文字、逐字詞移動游標或復原編輯。', 'shortcuts'],
+  ['Keep a shortcut handy', '收藏常用快捷鍵', 'Save a combination such as Win + Shift + S in Shortcuts, then take a screenshot with one click.', '把 Win + Shift + S 加入 Shortcuts，下次只要點一下就能叫出螢幕擷取。', 'settings'],
+  ['Reuse a reply', '重複使用常用回覆', 'Save “I’m on my way” in Phrases. Pin it for quick access or filter your replies by label or category.', '在 Phrases 儲存「我在路上了」。你可以釘選這句回覆，或依名稱與分類篩選。', 'settings'],
+  ['Swipe a name', '滑出專有名詞', 'Add Mousyst or another English name to your personal dictionary and keep its capitalization when you swipe.', '把 Mousyst 等英文名稱加入個人詞庫，滑行輸入時也能保留原本的大小寫。', 'settings'],
+  ['Teach it your swipe', '讓鍵盤熟悉你的滑法', 'Choose “too” after a swipe and keep typing in the same field. Mousyst learns from confirmed choices and your usual pointer offset. Pause or clear learning in Settings.', '滑行後改選 too，再於同一欄位繼續輸入。Mousyst 會在本機學習已確認的選字與滑鼠偏移習慣。你可以在設定中暫停或清除學習紀錄。', 'recognition'],
+];
+---
+<section class="tools" id="desktop-tools" aria-labelledby="tools-title">
+  <div>
+    <p class="eyebrow" data-en="MousystNext · Windows testing build" data-zh="MousystNext · Windows 測試版">MousystNext · Windows testing build</p>
+    <h2 id="tools-title" data-en="After the first word." data-zh="輸入之後，還能做什麼？">After the first word.</h2>
+    <p class="muted" data-en="The welcome card shows how to get started. Once the keyboard is open, these tools help with the rest of a reply." data-zh="歡迎畫面會帶你開始使用。叫出鍵盤後，這些工具能幫你寫完一則回覆。">The welcome card shows how to get started. Once the keyboard is open, these tools help with the rest of a reply.</p>
+    <a href="/demo/#reply-tools" class="button secondary" data-en="Try a saved reply →" data-zh="試用常用回覆 →">Try a saved reply →</a>
+  </div>
+  <div>{tools.map(([en,zh,body,translation,guide], index) =>
+    <details open={index === 0}>
+      <summary><span data-en={en} data-zh={zh}>{en}</span></summary>
+      <p data-en={body} data-zh={translation}>{body}</p>
+      <a href={`/docs/${guide}/`} data-en="Read the guide →" data-zh="閱讀指南 →">Read the guide →</a>
+    </details>
+  )}</div>
+</section>
+<style>
+.tools{padding:clamp(52px,8vw,116px) 8vw;display:grid;grid-template-columns:1fr 1fr;gap:8vw;border-top:1px solid var(--line)}
+.tools h2{max-width:10em}.tools .muted{max-width:39ch}.tools .button{margin-top:12px}
+details{border-bottom:1px solid var(--line);padding:18px 0}summary{cursor:pointer;font-size:clamp(18px,2vw,25px)}summary::marker{color:var(--mint);font-size:.65em}
+details p{color:#bac7bd;margin:10px 0}details a{font-size:14px;color:var(--mint)}summary:focus-visible{outline:2px solid var(--mint);outline-offset:4px}
+@media(max-width:740px){.tools{grid-template-columns:1fr;gap:20px}}
+</style>

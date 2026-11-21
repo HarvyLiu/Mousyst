@@ -880,6 +880,8 @@ def main():
         point = QCursor.pos()
         screen = QGuiApplication.screenAt(point) or app.primaryScreen()
         bounds = screen.availableGeometry()
+        window.setScreen(screen)
+        window.setProperty("availableKeyboardWidth", bounds.width())
         window.setPosition(
             QPoint(
                 max(

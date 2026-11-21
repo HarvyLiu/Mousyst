@@ -6,6 +6,7 @@ Item {
     id: shelf
     required property string section
     required property real pitch
+    signal manageRequested(string kind)
     property bool phraseAllowed: false
     property string query: ""
     property bool searching: false
@@ -40,15 +41,20 @@ Item {
     ColumnLayout {
         anchors.fill: parent; spacing: 4
         RowLayout {
-            Layout.fillWidth: true; visible: shelf.section === "phrases" && shelf.phraseAllowed
+            Layout.fillWidth: true; visible: shelf.section === "favorites" || (shelf.section === "phrases" && shelf.phraseAllowed)
             Label {
-                Layout.fillWidth: true; text: shelf.query ? ("Filter · " + shelf.query) : "Saved phrases"
+                Layout.fillWidth: true; text: shelf.query ? ("Filter · " + shelf.query) : (shelf.section === "favorites" ? "Favorite shortcuts" : "Saved phrases")
                 color: "#aaaab5"; elide: Text.ElideRight
             }
             Tile {
+                visible: shelf.section === "phrases"
                 text: shelf.searching ? "Show matches" : "Filter"
                 implicitHeight: 24; implicitWidth: 100
                 onClicked: shelf.searching = !shelf.searching
+            }
+            Tile {
+                text: "Manage"; implicitHeight: 24; implicitWidth: 82
+                onClicked: shelf.manageRequested(shelf.section)
             }
             Tile {
                 visible: shelf.query.length > 0
