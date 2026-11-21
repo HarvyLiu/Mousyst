@@ -1203,12 +1203,21 @@ def main():
                 )
                 QTest.qWait(25)
                 suggestions = window.findChild(QQuickItem, "desktopSuggestions")
+                assert suggestions.property("predicting")
+                expand = window.findChild(QQuickItem, "expandSuggestions")
+                QTest.mouseClick(
+                    window, Qt.LeftButton, Qt.NoModifier,
+                    expand.mapToScene(QPointF(expand.width()/2, expand.height()/2)).toPoint(),
+                )
+                QTest.qWait(25)
+                grid = window.findChild(QQuickItem, "candidateGrid")
+                assert grid.isVisible()
                 QTest.mouseClick(
                     window,
                     Qt.LeftButton,
                     Qt.NoModifier,
-                    suggestions.mapToScene(
-                        QPointF(suggestions.width() / 2 - 15, 17)
+                    grid.mapToScene(
+                        QPointF(grid.property("cellWidth") * 1.5, grid.property("cellHeight") / 2)
                     ).toPoint(),
                 )
                 QTest.qWait(25)

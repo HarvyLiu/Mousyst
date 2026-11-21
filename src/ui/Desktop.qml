@@ -90,6 +90,9 @@ Window {
                 property bool composing: mousyst.pronunciation.length > 0
                 property var choices: composing ? mousyst.readingChoices : mousyst.suggestions
                 property int candidateIndex: composing ? mousyst.highlightedReading : mousyst.selectedSuggestion
+                readonly property string context: mousyst.predictionContext
+                readonly property var nextWords: Predict.nextWords(context,root.zhuyin)
+                readonly property bool predicting: !composing && !root.allChoices && nextWords.length>0
                 property int page:0
                 onCandidateIndexChanged: page=Math.floor(candidateIndex/3)
                 Connections {target:mousyst; function onDesktopChanged(){if(suggestions.lastReading!==mousyst.pronunciation){suggestions.lastReading=mousyst.pronunciation;suggestions.page=0}}}
@@ -97,29 +100,34 @@ Window {
                 property int session:mousyst.suggestionSession
                 property real wheelDelta:0
                 onSessionChanged:{wheelDelta=0;page=0;root.allChoices=false}
-                onChoicesChanged:if(choices.length<=3)root.allChoices=false
-                Repeater {model:3;Key {required property int index;objectName:'desktopSuggestion'+index;direct:false;visible:!mousyst.needsSpelling;readonly property int choice:suggestions.page*3+index;text:suggestions.choices[choice]||'';enabled:mousyst.pendingCount===0 && choice<suggestions.choices.length;opacity:enabled?1:.25;checked:enabled&&choice===suggestions.candidateIndex;Layout.fillWidth:true;implicitHeight:34;onReleased:suggestions.composing?mousyst.commitReading(choice):mousyst.alternative(choice)}}
-                Key {objectName:"expandSuggestions";text:root.allChoices?"▴":"▾";Accessible.name:"More suggestions";direct:false;visible:suggestions.choices.length>3;implicitHeight:34
+                onChoicesChanged:if(choices.length<=1 || (composing && choices.length<=3))root.allChoices=false
+                Repeater {
+                    model:3
+                    Key {
+                        required property int index
+                        readonly property int choice:suggestions.page*3+index
+                        objectName:'desktopSuggestion'+index
+                        direct:false; visible:!mousyst.needsSpelling
+                        text:(suggestions.predicting ? suggestions.nextWords[index] : suggestions.choices[choice]) || ''
+                        enabled:mousyst.pendingCount===0 && text.length>0
+                        opacity:enabled?1:.25
+                        checked:enabled && !suggestions.predicting && choice===suggestions.candidateIndex
+                        Layout.fillWidth:true; implicitHeight:34
+                        onReleased:{
+                            if(suggestions.predicting) mousyst.appendPrediction(text,suggestions.context,root.zhuyin)
+                            else if(suggestions.composing) mousyst.commitReading(choice)
+                            else mousyst.alternative(choice)
+                            root.allChoices=false
+                        }
+                    }
+                }
+                Key {objectName:"expandSuggestions";text:root.allChoices?"▴":"▾";Accessible.name:"More suggestions";direct:false;visible:suggestions.choices.length>3 || (!suggestions.composing && suggestions.choices.length>1 && suggestions.nextWords.length>0);implicitHeight:34
                     onReleased:root.allChoices=!root.allChoices}
                 Key {text:'';iconName:'undo';direct:false;visible:!mousyst.needsSpelling;enabled:mousyst.pendingCount===0 && mousyst.suggestions.length>0;opacity:enabled?1:.25;implicitHeight:34;onReleased:mousyst.undoWord()}
                 Key {visible:mousyst.needsSpelling;direct:false;text:mousyst.isSpelling?'Insert word':'Spell word';Layout.fillWidth:true;implicitHeight:34;onReleased:mousyst.isSpelling?mousyst.finishSpelling():mousyst.spellWord()}
                 Key {visible:mousyst.needsSpelling;direct:false;text:'Cancel pending';Layout.fillWidth:true;implicitHeight:34;onReleased:mousyst.cancel()}
                 MouseArea {anchors.fill:parent;acceptedButtons:Qt.NoButton
                     onWheel:wheel=>{if(suggestions.choices.length===0){suggestions.wheelDelta=0;wheel.accepted=false;return}suggestions.wheelDelta+=wheel.angleDelta.y;let steps=Math.trunc(suggestions.wheelDelta/120);if(steps){suggestions.wheelDelta-=steps*120;mousyst.cycleSuggestion(-steps)}wheel.accepted=true}
-                }
-            }
-            RowLayout {
-                id:nextRow; objectName:"desktopNextWords"
-                Layout.fillWidth:true; Layout.preferredHeight:28
-                readonly property string context: mousyst.predictionContext
-                readonly property var words: Predict.nextWords(context,root.zhuyin)
-                Label {text:root.zhuyin?"接著輸入":"Next word";color:"#a7a7b2";font.pixelSize:12}
-                Repeater {
-                    model:3
-                    Key {required property int index; objectName:"nextWord"+index
-                        Layout.fillWidth:true; implicitHeight:28; direct:false
-                        text:nextRow.words[index]||""; enabled:text.length>0; opacity:enabled?1:0
-                        onReleased:mousyst.appendPrediction(text,nextRow.context,root.zhuyin)}
                 }
             }
             RowLayout {visible:prefs.layout==='Full';spacing:5;Repeater {model:12;Key {required property int index;text:'F'+(index+1);Layout.fillWidth:true}}}

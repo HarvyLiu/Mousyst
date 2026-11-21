@@ -19,7 +19,6 @@ const status = demo.querySelector<HTMLElement>('.status')!;
 const undo = demo.querySelector<HTMLButtonElement>('#undo-word')!;
 const strip = demo.querySelector<HTMLElement>('.candidates')!;
 const buttons = [...strip.querySelectorAll<HTMLButtonElement>('[data-candidate]')];
-const nextButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-next]')];
 const letters = [...board.querySelectorAll<HTMLButtonElement>('[data-letter]')];
 const trail = board.querySelector<SVGPathElement>('path')!;
 const edits: Edit[] = [];
@@ -124,32 +123,27 @@ function continuations(): string[] {
   return nextWords(text.value.slice(Math.max(0,text.selectionStart-100),text.selectionStart),mandarin);
 }
 
-nextButtons.forEach((button,i)=>button.addEventListener('click',()=>{
-  const word=continuations()[i];
-  if (!word || button.textContent!==word) return;
+function appendNext(word:string) {
   const start=text.selectionStart;
   insert(word+(mandarin?'':' '));
   owner=mandarin ? null : {start,end:text.selectionEnd,before:'',after:text.value,candidates:[word],selected:0};
   refreshSuggestions();
-}));
+}
 
 function refreshSuggestions() {
   const next=continuations();
-  nextButtons.forEach((button,i)=>{
-    button.textContent=next[i] || '';
-    button.disabled=!next[i];
-  });
   const active = ownsWord() && edits.length === 0 ? owner : null;
-  const list=currentChoices();
+  const alternatives=currentChoices();
+  const list=next.length ? next : alternatives;
   const selected=reading ? highlight : active?.selected ?? 0;
-  const offset=3*Math.floor(selected/3);
+  const offset=next.length ? 0 : 3*Math.floor(selected/3);
   ime.disabled=edits.length>0;
-  more.disabled=list.length<=3;
+  more.disabled=alternatives.length <= (next.length ? 1 : 3);
   if (more.disabled) closePicker();
   buttons.forEach((button,i) => {
     button.textContent = list[offset+i] ?? '';
     button.disabled = !button.textContent;
-    button.setAttribute('aria-pressed',String(selected === offset+i && list.length>0));
+    button.setAttribute('aria-pressed',String(!next.length && selected === offset+i && list.length>0));
   });
   undo.disabled = !active;
 }
@@ -273,7 +267,15 @@ function choose(i: number) {
   }
   refreshSuggestions();
 }
-buttons.forEach((button,i)=>button.addEventListener('click',()=>pick(3*Math.floor((reading ? highlight : owner?.selected ?? 0)/3)+i)));
+buttons.forEach((button,i)=>button.addEventListener('click',()=>{
+  const next=continuations();
+  if (next.length) {
+    if (next[i] && next[i]===button.textContent) appendNext(next[i]);
+  } else {
+    const index=3*Math.floor((reading ? highlight : owner?.selected ?? 0)/3)+i;
+    if (button.textContent===currentChoices()[index]) pick(index);
+  }
+}));
 strip.addEventListener('wheel',event=>{
   if (!currentChoices().length || !event.deltaY) return;
   event.preventDefault();
