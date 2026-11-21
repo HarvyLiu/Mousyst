@@ -18,8 +18,12 @@ const dictionary = loadDictionary();
 dictionary.catch(() => {}); // Each waiting request reports the load failure.
 self.onmessage = async ({data}) => {
   try {
-    const entries = (await dictionary).get(data.reading);
-    const words = entries ? [...entries].sort((a,b)=>b[1]-a[1]).map(([word])=>word) : [];
-    self.postMessage({id:data.id,words});
+    const lexicon=await dictionary;
+    const matches=(data.options ?? [data.reading]).filter((key:string)=>lexicon.has(key));
+    const words=new Set<string>();
+    for (const key of matches) {
+      for (const [word] of [...lexicon.get(key)!].sort((a,b)=>b[1]-a[1])) words.add(word);
+    }
+    self.postMessage({id:data.id,reading:matches[0] ?? data.reading,words:[...words]});
   } catch { self.postMessage({id:data.id,failed:true}); }
 };

@@ -9,7 +9,7 @@ const symbols = ['1234567890', '!@#$%&*()', '+-=<>/[]{}', '.,;:\'"?_\\^'];
 <Shell title="Typing demo — Mousyst">
   <section class="demo" id="typing-demo">
     <h1 data-en="Try Mousyst." data-zh="試試 Mousyst。">Try Mousyst.</h1>
-    <p class="instructions" data-en="Click a letter or hold and glide through a word. Try H → E → L → O for “hello”. On a touch screen, drag with your finger." data-zh="點擊字母，或按住並滑過一個英文單字。試著滑過 H → E → L → O，輸入「hello」。觸控螢幕也能用手指滑行。">Click a letter or hold and glide through a word. Try H → E → L → O for “hello”. On a touch screen, drag with your finger.</p>
+    <p class="instructions" data-en="Click a letter or hold and glide through a word. Try H → E → L → O for “hello”. For Mandarin, choose 注音 and glide through ㄕˋㄐㄧㄝˋ for 世界." data-zh="點擊字母，或按住並滑過一個英文單字。試著滑過 H → E → L → O，輸入「hello」。切換至注音，滑過 ㄕˋㄐㄧㄝˋ 即可選擇「世界」。">Click a letter or hold and glide through a word. Try H → E → L → O for “hello”. For Mandarin, choose 注音 and glide through ㄕˋㄐㄧㄝˋ for 世界.</p>
     <label for="demo-text" data-en="Your text" data-zh="輸入內容">Your text</label>
     <textarea id="demo-text" rows="3" spellcheck="false" autocomplete="off"></textarea>
     <div class="demo-keyboard">
@@ -21,7 +21,7 @@ const symbols = ['1234567890', '!@#$%&*()', '+-=<>/[]{}', '.,;:\'"?_\\^'];
       </div>
       <div class="keys-stage">
         <div id="all-choices" hidden></div>
-        <div class="symbol-board" id="zh-board" hidden>{phoneticRows.map(row=><div>{[...row].map(key=><button type="button" data-sound={key}>{key}</button>)}</div>)}</div>
+        <div class="symbol-board" id="zh-board" hidden>{phoneticRows.map(row=><div>{[...row].map(key=><button type="button" data-sound={key}>{key}</button>)}</div>)}<svg class="trail" aria-hidden="true"><path fill="none"/></svg></div>
         <div class="letter-board" id="letter-board">
           {rows.map((row,r)=><div class="letter-row">{[...row].map((key,i)=>
             <button type="button" data-letter={key} style={`grid-column: ${1+[0,1,3][r]+i*2} / span 2`}>{key}</button>
@@ -61,7 +61,7 @@ const symbols = ['1234567890', '!@#$%&*()', '+-=<>/[]{}', '.,;:\'"?_\\^'];
 #reading{display:block;min-height:24px;color:var(--mint);font-size:14px}
 #all-choices{position:absolute;inset:0;z-index:2;overflow:auto;background:#202722;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:38px;gap:4px}
 #all-choices :global(button){font:inherit;background:#303a33;color:var(--fg);border:1px solid #49544c;border-radius:4px;overflow:hidden;text-overflow:ellipsis}
-#zh-board button{font-family:system-ui,sans-serif}
+#zh-board,#zh-board button{touch-action:none}#zh-board button{font-family:system-ui,sans-serif}
 
 #reply-tools{margin-top:18px;padding:14px 16px;border:1px solid var(--line);border-radius:8px}
 #reply-tools summary{cursor:pointer;color:var(--mint)}#reply-tools p{font-size:14px;color:#bac7bd}

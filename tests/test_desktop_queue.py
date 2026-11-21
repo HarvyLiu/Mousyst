@@ -271,3 +271,21 @@ def test_zhuyin_backspace_and_changed_field(keyboard):
     keyboard.output.password = True
     keyboard.phonetic("ㄕ")
     assert keyboard.pronunciation == ""
+
+
+def test_contraction_space_verifies_the_field(keyboard):
+    for key in "dont ":
+        keyboard.key(key)
+    assert keyboard.output.text == "don't "
+    for key in "youre":
+        keyboard.key(key)
+    keyboard.output.identity = (2,)
+    keyboard.key(" ")
+    assert keyboard.output.text.endswith("youre ")
+
+
+def test_zhuyin_trace_declines_a_moved_caret(keyboard):
+    keyboard.beginPhoneticGesture()
+    keyboard.output.text = "moved"
+    keyboard.phoneticTrace(["ㄕˋㄐㄧㄝˋ"])
+    assert not keyboard.readingChoices and keyboard.output.text == "moved"

@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
 import QtQuick.Dialogs
+import "zhuyin-trace.mjs" as ZhTrace
 
 Window {
     id: root
@@ -188,15 +189,40 @@ Window {
                     onReleased:mousyst.setPreference('numberFormat',numberBoard.pad?'Rows':'Numpad')
                 }
             }
-            ColumnLayout {
-                objectName:"phoneticBoard";visible:!root.allChoices&&root.zhuyin&&!root.numbers&&!root.shelf
-                Layout.preferredWidth:14*root.pitch;Layout.preferredHeight:3*root.pitch;spacing:2
-                Repeater {model:mousyst.phoneticRows
-                    RowLayout {id:soundRow;required property string modelData;Layout.fillWidth:true;spacing:3
-                        Repeater {model:soundRow.modelData.split("")
-                            Key {required property string modelData;text:modelData;direct:false;Layout.fillWidth:true;Layout.preferredHeight:root.pitch*.67;onReleased:mousyst.phonetic(modelData)}
+            Item {
+                id:phoneticBoard;objectName:"phoneticBoard";visible:!root.allChoices&&root.zhuyin&&!root.numbers&&!root.shelf
+                Layout.preferredWidth:14*root.pitch;Layout.preferredHeight:3*root.pitch
+                ColumnLayout {
+                    anchors.fill:parent;spacing:2
+                    Repeater {id:zhRows;model:mousyst.phoneticRows
+                        RowLayout {id:soundRow;required property string modelData;Layout.fillWidth:true;spacing:3
+                            property alias keys:sounds
+                            Repeater {id:sounds;model:soundRow.modelData.split("")
+                                Key {required property string modelData;text:modelData;direct:false;Layout.fillWidth:true;Layout.preferredHeight:root.pitch*.67;onReleased:mousyst.phonetic(modelData)}
+                            }
                         }
                     }
+                }
+                Canvas {id:zhTrail;anchors.fill:parent
+                    onPaint:{const c=getContext("2d");c.clearRect(0,0,width,height);c.lineWidth=3;c.lineJoin="round";c.lineCap="round";c.strokeStyle=root.prefs.accent;c.beginPath()
+                        const path=zhPointer.points;for(let i=Math.max(0,path.length-32);i<path.length;i++){let x=path[i][0]*width/11,y=path[i][1]*height/4;if(i===Math.max(0,path.length-32))c.moveTo(x,y);else c.lineTo(x,y)}c.stroke()}
+                }
+                MouseArea {id:zhPointer;anchors.fill:parent;preventStealing:true
+                    property var points:[];property var centers:({});property string first:"";property bool dragged:false
+                    function reset(){first="";points=[];dragged=false;zhTrail.requestPaint()}
+                    function point(x,y){return [11*x/width,4*y/height]}
+                    function record(x,y){let p=point(x,y);if(Math.hypot(p[0]-points[0][0],p[1]-points[0][1])>0.33)dragged=true
+                        let last=points[points.length-1];if(Math.hypot(last[0]-p[0],last[1]-p[1])>.035){points.push(p);zhTrail.requestPaint()}}
+                    onPressed:mouse=>{reset();if(!mousyst.beginPhoneticGesture())return;let map={};for(let r=0;r<zhRows.count;r++){let row=zhRows.itemAt(r)
+                        for(let k=0;k<row.keys.count;k++){let key=row.keys.itemAt(k);let pos=key.mapToItem(zhPointer,0,0)
+                            map[key.text]=point(pos.x+key.width/2,pos.y+key.height/2)
+                            if(mouse.x>=pos.x&&mouse.x<pos.x+key.width&&mouse.y>=pos.y&&mouse.y<pos.y+key.height)first=key.text}}
+                        centers=map;points=[point(mouse.x,mouse.y)]}
+                    onPositionChanged:mouse=>{if(pressed&&first)record(mouse.x,mouse.y)}
+                    onReleased:mouse=>{if(first&&mouse.x>=0&&mouse.x<width&&mouse.y>=0&&mouse.y<height){
+                        record(mouse.x,mouse.y);if(dragged)mousyst.phoneticTrace(ZhTrace.traceReadings(points,centers));else mousyst.releasePhoneticTap(first)}reset()}
+                    onCanceled:reset()
+                    onVisibleChanged:if(!visible)reset()
                 }
             }
             GridView {

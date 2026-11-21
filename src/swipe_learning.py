@@ -7,6 +7,9 @@ import re
 from keyboard_layout import CENTERS
 
 
+LEARNABLE = re.compile(r"(?=.{1,32}$)[a-z]+(?:'[a-z]+)?")
+
+
 class SwipeLearning:
     def __init__(self, directory):
         self.path = directory / "swipe-learning.json"
@@ -16,7 +19,7 @@ class SwipeLearning:
                 return
             counts, bias = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(counts, dict) or len(counts) > 512 or any(
-                not re.fullmatch("[a-z]{1,32}", w) or type(n) is not int or not 1 <= n <= 24
+                not LEARNABLE.fullmatch(w) or type(n) is not int or not 1 <= n <= 24
                 for w, n in counts.items()
             ):
                 return
@@ -27,7 +30,7 @@ class SwipeLearning:
 
     def remember(self, word, endpoints, corrected):
         word = word.lower()
-        if not re.fullmatch("[a-z]{1,32}", word):
+        if not LEARNABLE.fullmatch(word):
             return
         counts, bias = self.state
         counts = counts.copy()

@@ -1,0 +1,4 @@
+{
+  "automatic": ["I'm", "I've", "don't", "can't", "won't", "doesn't", "didn't", "isn't", "aren't", "wasn't", "weren't", "hasn't", "haven't", "hadn't", "wouldn't", "shouldn't", "couldn't", "mustn't", "you're", "you've", "you'll", "they're", "they've", "they'll", "we've", "that's", "what's", "who's", "where's", "there's", "here's", "how's", "should've", "could've", "would've"],
+  "ambiguous": ["it's", "let's", "we're", "we'll", "we'd", "I'll", "I'd", "he'll", "he'd", "she'll", "she'd", "you'd", "they'd", "he's", "she's", "what'll"]
+}

@@ -109,8 +109,8 @@ def main():
         controller.alternative(0)
         time.sleep(0.1)
         assert json.loads(path.read_text()) == "help ", "Stale candidate modified text"
-        for mark in "ㄕˋㄐㄧㄝˋ":
-            controller.phonetic(mark)
+        controller.beginPhoneticGesture()
+        controller.phoneticTrace(["ㄕˋㄐㄧㄝˋ"])
         assert controller.readingChoices[0] == "世界"
         unchanged = json.loads(path.read_text())
         controller.cycleSuggestion(1)
@@ -119,6 +119,10 @@ def main():
         controller.key(" ")
         time.sleep(0.15)
         assert json.loads(path.read_text()).count("世界") == 1
+        for key in " dont ":
+            controller.key(key)
+            time.sleep(0.08)
+        assert " don't " in json.loads(path.read_text())
         controller.observer.start()
         app.processEvents()
         report = {

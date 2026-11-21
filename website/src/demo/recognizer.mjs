@@ -46,14 +46,24 @@ function alignedDistance(a, b) {
   return previous[sampleCount] / sampleCount;
 }
 
-export function makeRecognizer(words) {
+export function makeRecognizer(words, contractions = {}) {
   const buckets = new Map();
-  words.forEach((word, rank) => {
-    const start = word[0], end = word.at(-1);
+  function add(word, prior) {
+    const spelling=word.toLowerCase().replaceAll("'", "");
+    const start = spelling[0], end = spelling.at(-1);
     const id = start + end;
     if (!buckets.has(id)) buckets.set(id, []);
-    buckets.get(id).push({word, rank, path: resample([...word].map(letter => keyCenters[letter]))});
-  });
+    buckets.get(id).push({word, prior, path: resample([...spelling].map(letter => keyCenters[letter]))});
+  }
+  words.forEach((word, rank)=>add(word,Math.log1p(rank)*0.012));
+  for (const [kind, spellings] of Object.entries(contractions)) {
+    for (const word of spellings) {
+      const plain=word.toLowerCase().replaceAll("'", "");
+      const rank=words.indexOf(plain);
+      const prior=rank<0?0.06:Math.log1p(rank)*0.012;
+      add(word,prior+(kind==='ambiguous'?0.006:-0.015));
+    }
+  }
   return function recognize(points) {
     if (points.length < 2) return [];
     const path = resample(points);
@@ -72,7 +82,7 @@ export function makeRecognizer(words) {
     const finalists = shortlist.sort((a, b) => a.score - b.score).slice(0, 48);
     for (const candidate of finalists) {
       const {entry, endpoints} = candidate;
-      candidate.score = alignedDistance(path, entry.path) + endpoints * 0.8 + Math.log1p(entry.rank) * 0.012;
+      candidate.score = alignedDistance(path, entry.path) + endpoints * 0.8 + entry.prior;
     }
     return finalists.sort((a, b) => a.score - b.score).slice(0, 9).map(result => result.entry.word);
   };

@@ -22,22 +22,36 @@ def resample(points, count=32):
 
 
 def word_path(word):
+    word = word.lower().replace("'", "")
     return resample([CENTERS[c] for i, c in enumerate(word) if i == 0 or c != word[i - 1]])
 
 
 class Recognizer:
     def __init__(self, words=None):
-        if words is None:
+        production = words is None
+        if production:
             words = json.loads(
                 (Path(__file__).parent / "data/vocabulary.json").read_text(
                     encoding="utf-8"
                 )
             )["words"]
+        prior = list(np.log1p(np.arange(len(words))) * 0.012)
+        if production:
+            contractions = json.loads((Path(__file__).parent / "data/contractions.json").read_text())
+            words = list(words)
+            for kind, spellings in contractions.items():
+                for word in spellings:
+                    plain = word.lower().replace("'", "")
+                    rank = words.index(plain) if plain in words else None
+                    words.append(word)
+                    # Same path can spell two words, e.g. well and we'll.
+                    score = prior[rank] if rank is not None else 0.06
+                    prior.append(score + (0.006 if kind == "ambiguous" else -0.015))
         self.candidate_limit = 3
         self.words = words
         self.templates = np.asarray([word_path(word) for word in words])
         self._indices = {word: i for i, word in enumerate(words)}
-        self._base = (self.words, self.templates, np.log1p(np.arange(len(words))) * 0.012)
+        self._base = (self.words, self.templates, prior)
         self._lexicon = self._base
         self._personal_words = ()
         self.learned = {}, (0.0, 0.0)

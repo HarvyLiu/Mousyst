@@ -1,3 +1,6 @@
+import {traceReadings} from '../../../src/ui/zhuyin-trace.mjs';
+import contractions from '../../../src/data/contractions.json';
+const apostrophes = new Map(contractions.automatic.map(word=>[word.toLowerCase().replaceAll("'",""),word] as const));
 import { keyCenters } from './recognizer.mjs';
 
 type Point = [number, number];
@@ -54,7 +57,7 @@ function resetReading() {
   closePicker();
 }
 
-function setReading(value:string) {
+function setReading(value:string, options?:string[]) {
   if (!value) {resetReading(); refreshSuggestions(); return;}
   if (!origin) origin = {value:text.value,start:text.selectionStart,end:text.selectionEnd};
   reading = value;
@@ -68,6 +71,7 @@ function setReading(value:string) {
       zhWorker = new Worker(new URL('./zhuyin-worker.ts',import.meta.url),{type:'module'});
       zhWorker.onmessage = ({data}) => {
         if (data.id !== revision) return;
+        reading=data.reading ?? reading;readingLabel.textContent=reading;
         choices = data.words ?? [];
         notice(data.failed ? 'Dictionary unavailable.' : choices.length ? '' : 'Continue the reading or use Backspace.',
                data.failed ? '無法載入詞庫。' : choices.length ? '' : '請繼續輸入注音或按退格鍵。');
@@ -75,7 +79,7 @@ function setReading(value:string) {
       };
       zhWorker.onerror = () => {zhWorker?.terminate(); zhWorker=undefined;notice('Dictionary unavailable.','無法載入詞庫。');};
     }
-    zhWorker.postMessage({id:++revision,reading});
+    zhWorker.postMessage({id:++revision,reading,options});
   } catch {notice('Dictionary unavailable.','無法載入詞庫。');}
 }
 
@@ -147,6 +151,14 @@ const graphemes = typeof Intl.Segmenter === 'function'
 function applyKey(value: string) {
   const {selectionStart:start,selectionEnd:end} = text;
   if (value === ' ' && ownsWord()) return;
+  if (value===' ' && start===end && !mandarin) {
+    const raw=text.value.slice(0,start).match(/(?:^|\s)([A-Za-z]+)$/)?.[1];
+    const word=raw && apostrophes.get(raw.toLowerCase());
+    if (raw && word && !/[A-Za-z]/.test(text.value[start] || ' ')) {
+      const spelled=raw===raw.toUpperCase()?word.toUpperCase():raw[0]===raw[0].toUpperCase()?word[0].toUpperCase()+word.slice(1):word;
+      insert(spelled+' ',start-raw.length,end);owner=null;return;
+    }
+  }
   if (value === 'Backspace') {
     let from = start;
     if (start === end && start > 0) {
@@ -329,6 +341,7 @@ for (const button of letters) button.addEventListener('click',event=>{
 });
 
 function invalidate() {
+  cancelZhStroke();
   resetReading();
   cancelStroke();
   edits.length=0;owner=null;wheelRemainder=0;notice();refreshSuggestions();
@@ -348,7 +361,7 @@ window.addEventListener('blur',invalidate);
 window.addEventListener('resize',cancelStroke);
 demo.querySelector('.demo-keyboard')!.addEventListener('mousedown',event=>event.preventDefault());
 layer.addEventListener('click',()=>{
-  resetReading();cancelStroke();closePicker();
+  cancelZhStroke();resetReading();cancelStroke();closePicker();
   symbols.hidden=!symbols.hidden;
   renderLayer();refreshSuggestions();
 });
@@ -368,8 +381,56 @@ ime.addEventListener('click',()=>{
   ime.setAttribute('aria-pressed',String(mandarin));
   renderLayer();
 });
-zhBoard.querySelectorAll<HTMLButtonElement>('[data-sound]').forEach(button=>
-  button.addEventListener('click',()=>{if(reading.length<60)setReading(reading+button.dataset.sound!);}));
+const soundKeys=[...zhBoard.querySelectorAll<HTMLButtonElement>('[data-sound]')];
+const zhTrail=zhBoard.querySelector<SVGPathElement>('path')!;
+let zhStroke:{id:number;first:string;points:Point[];rect:DOMRect;centers:Record<string,Point>;dragged:boolean}|null=null;
+function cancelZhStroke() {
+  const id=zhStroke?.id;
+  zhStroke=null;zhTrail.removeAttribute('d');
+  if(id!==undefined && zhBoard.hasPointerCapture(id))zhBoard.releasePointerCapture(id);
+}
+function soundPoint(x:number,y:number,r:DOMRect):Point {
+  return [(x-r.left)*11/r.width,(y-r.top)*4/r.height];
+}
+function recordSound(event:PointerEvent) {
+  if(!zhStroke)return;
+  const p=soundPoint(event.clientX,event.clientY,zhStroke.rect);
+  const [x,y]=zhStroke.points[0], last=zhStroke.points.at(-1)!;
+  if(Math.hypot(x-p[0],y-p[1])>.33)zhStroke.dragged=true;
+  if(Math.hypot(last[0]-p[0],last[1]-p[1])>.035)zhStroke.points.push(p);
+}
+zhBoard.addEventListener('pointerdown',event=>{
+  const first=(event.target as Element).closest<HTMLElement>('[data-sound]')?.dataset.sound;
+  if(!first || !event.isPrimary || event.button!==0 || zhStroke)return;
+  event.preventDefault();
+  const rect=zhBoard.getBoundingClientRect(), centers:Record<string,Point>={};
+  for(const key of soundKeys){const b=key.getBoundingClientRect();centers[key.dataset.sound!]=soundPoint(b.x+b.width/2,b.y+b.height/2,rect);}
+  zhStroke={id:event.pointerId,first,rect,centers,dragged:false,points:[soundPoint(event.clientX,event.clientY,rect)]};
+  zhBoard.setPointerCapture(event.pointerId);
+});
+zhBoard.addEventListener('pointermove',event=>{
+  if(!zhStroke || event.pointerId!==zhStroke.id)return;
+  for(const sample of event.getCoalescedEvents?.() ?? [])recordSound(sample);
+  recordSound(event);
+  const {points,rect}=zhStroke;
+  zhTrail.setAttribute('d',points.slice(-32).map(([x,y],i)=>(i?'L':'M')+(x*rect.width/11)+' '+(y*rect.height/4)).join(' '));
+});
+zhBoard.addEventListener('pointerup',event=>{
+  if(!zhStroke || event.pointerId!==zhStroke.id)return;
+  recordSound(event);
+  const {points,centers,rect,first,dragged}=zhStroke;
+  cancelZhStroke();
+  if(event.clientX<rect.left || event.clientX>=rect.right || event.clientY<rect.top || event.clientY>=rect.bottom)return;
+  const suffixes:string[]=dragged?traceReadings(points,centers):[first];
+  const options=suffixes.map(suffix=>reading+suffix).filter(word=>word.length<=60);
+  if(options.length)setReading(options[0],options);
+});
+for(const name of ['pointercancel','lostpointercapture'])zhBoard.addEventListener(name,cancelZhStroke);
+window.addEventListener('resize',cancelZhStroke);
+for(const key of soundKeys)key.addEventListener('click',event=>{
+  if(event.detail===0 && reading.length<60)setReading(reading+key.dataset.sound!);
+});
+
 shift.addEventListener('click',()=>setShift(!shifted));
 demo.querySelectorAll<HTMLButtonElement>('[data-char]').forEach(button=>
   button.addEventListener('click',()=>key(button.dataset.char!)));

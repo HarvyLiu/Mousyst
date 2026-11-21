@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import sys
 import time
 from collections import deque
@@ -37,6 +38,12 @@ from swipe_learning import SwipeLearning
 from tray import app_icon
 from welcome import WelcomeCard
 from window_behavior import KeyboardActivationFilter
+
+
+AUTO_CONTRACTIONS = {
+    word.lower().replace("'", ""): word for word in
+    json.loads((Path(__file__).parent / "data/contractions.json").read_text())["automatic"]
+}
 
 
 @dataclass(frozen=True)
@@ -170,14 +177,55 @@ class DesktopController(Controller):
     def phonetic(self, symbol):
         if symbol not in SYMBOLS or self.pendingCount or len(self.reading) >= 60:
             return
+        if self.prepare_reading(self.snapshot() if self.output and not self.reading else None):
+            self.update_reading(self.reading + symbol)
+
+    def prepare_reading(self, origin):
         if not self.reading:
             self.cancel()
-            self.reading_origin = self.snapshot()
+            self.reading_origin = origin
             if self.output and not accepts_insertion(self.reading_origin, self.reading_origin):
                 self.status = "Click a text field, then middle-click to type with Zhuyin."
                 self.changed.emit()
-                return
-        self.update_reading(self.reading + symbol)
+                return False
+        return True
+
+    @Slot(result=bool)
+    def beginPhoneticGesture(self):
+        if self.pendingCount:
+            return False
+        self.gesture_origin = self.snapshot() if self.output else None
+        return True
+
+    @Slot(str)
+    def releasePhoneticTap(self, symbol):
+        if self.gesture_still_current():
+            if symbol in SYMBOLS and len(self.reading)<60 and self.prepare_reading(self.gesture_origin):
+                self.update_reading(self.reading + symbol)
+
+    def gesture_still_current(self):
+        if self.output and not accepts_insertion(getattr(self, "gesture_origin", None), self.snapshot()):
+            self.cancel()
+            self.status = "The text field changed or is unavailable. Try the reading again."
+            self.changed.emit()
+            return False
+        return True
+
+    @Slot("QStringList")
+    def phoneticTrace(self, alternatives):
+        if self.pendingCount or not alternatives or not self.gesture_still_current() or not self.prepare_reading(self.gesture_origin):
+            return
+        options = [self.reading + suffix for suffix in alternatives[:128]
+                   if suffix and len(self.reading + suffix) <= 60 and all(c in SYMBOLS for c in suffix)]
+        if not options:
+            return
+        lexicon = dictionary()
+        matches = [option for option in options if option in lexicon]
+        self.reading = matches[0] if matches else options[0]
+        self.reading_choices = list(dict.fromkeys(word for option in matches for word in lexicon[option]))
+        self.highlight = 0
+        self.status = "Choose a candidate or keep typing." if matches else "Continue the reading or use Backspace."
+        self.changed.emit()
 
     def update_reading(self, reading):
         self.reading = reading
@@ -531,6 +579,28 @@ class DesktopController(Controller):
             # A local trailing space is not permission to delete external text.
             self.editor.external("")
         before = self.editor.text
+        if text == " " and not sensitive and (not self.output or matches_owner(self.last_edit_target, current)):
+            token = re.search(r"(?:^|\s)([A-Za-z]+)$", before)
+            if token and token[1].lower() in AUTO_CONTRACTIONS:
+                raw = token[1]
+                complete = not self.output or re.search(r"(?:^|\s)" + raw + "$", current["prefix"])
+                if complete:
+                    word = AUTO_CONTRACTIONS[raw.lower()]
+                    if raw.isupper():
+                        word = word.upper()
+                    elif raw[0].isupper():
+                        word = word[0].upper() + word[1:]
+                    def correct():
+                        if self.output:
+                            for _ in raw:
+                                self.output.chord("Back", [])
+                        self.send_text(word + " ")
+                    if self.dispatch(correct):
+                        self.editor.external(before[:-len(raw)] + word + " ")
+                        self.invalidate()
+                        self.owner = None
+                        return expected_edit(current, len(raw), word + " ")
+                    return None
         self.editor.insert(text)
         after = self.editor.text
         if after == before:
@@ -805,6 +875,7 @@ class DesktopController(Controller):
 
     @Slot()
     def cancel(self):
+        self.gesture_origin = None
         self.clear_reading()
         self.learning_points = None
         if self.inflight_job is not None:
