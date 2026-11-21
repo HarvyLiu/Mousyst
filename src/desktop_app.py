@@ -31,7 +31,7 @@ from desktop import DesktopInput, MiddleButtonHook
 from input_session import accepts_insertion, matches_owner
 from keymap import shifted_text
 from practice import Controller
-from zhuyin import ROWS, SYMBOLS, dictionary
+from zhuyin import ROWS, SYMBOLS, compose, convert, swipe_buckets, syllables
 from settings import DEFAULTS, Settings
 from shelf_tools import ShelfTools
 from swipe_learning import SwipeLearning
@@ -211,6 +211,14 @@ class DesktopController(Controller):
             return False
         return True
 
+    @Slot(result="QVariantList")
+    def swipeSyllables(self):
+        return syllables()
+
+    @Slot("QStringList", result="QVariantList")
+    def swipeReadings(self, endpoints):
+        return [entry for pair in endpoints for entry in swipe_buckets().get(pair, ())]
+
     @Slot("QStringList")
     def phoneticTrace(self, alternatives):
         if self.pendingCount or not alternatives or not self.gesture_still_current() or not self.prepare_reading(self.gesture_origin):
@@ -219,17 +227,14 @@ class DesktopController(Controller):
                    if suffix and len(self.reading + suffix) <= 60 and all(c in SYMBOLS for c in suffix)]
         if not options:
             return
-        lexicon = dictionary()
-        matches = [option for option in options if option in lexicon]
-        self.reading = matches[0] if matches else options[0]
-        self.reading_choices = list(dict.fromkeys(word for option in matches for word in lexicon[option]))
+        self.reading, self.reading_choices = convert(options)
         self.highlight = 0
-        self.status = "Choose a candidate or keep typing." if matches else "Continue the reading or use Backspace."
+        self.status = "Choose a candidate or keep typing." if self.reading_choices else "Continue the reading or use Backspace."
         self.changed.emit()
 
     def update_reading(self, reading):
         self.reading = reading
-        self.reading_choices = dictionary().get(reading, []) if reading else []
+        self.reading_choices = list(compose(reading)) if reading else []
         self.highlight = 0
         self.status = "Choose a candidate or keep typing." if self.reading_choices else "Continue the reading or use Backspace."
         self.changed.emit()

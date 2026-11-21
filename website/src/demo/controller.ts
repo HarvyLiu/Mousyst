@@ -57,9 +57,10 @@ function resetReading() {
   closePicker();
 }
 
-function setReading(value:string, options?:string[]) {
+function setReading(value:string, options?:string[], gesture?:{points:Point[];centers:Record<string,Point>;prefix:string;suffixes:string[]}) {
   if (!value) {resetReading(); refreshSuggestions(); return;}
   if (!origin) origin = {value:text.value,start:text.selectionStart,end:text.selectionEnd};
+  const previousReading=reading;
   reading = value;
   choices = [];
   highlight = 0;
@@ -79,7 +80,7 @@ function setReading(value:string, options?:string[]) {
       };
       zhWorker.onerror = () => {zhWorker?.terminate(); zhWorker=undefined;notice('Dictionary unavailable.','無法載入詞庫。');};
     }
-    zhWorker.postMessage({id:++revision,reading,options});
+    zhWorker.postMessage({id:++revision,reading,previousReading,options,gesture});
   } catch {notice('Dictionary unavailable.','無法載入詞庫。');}
 }
 
@@ -423,7 +424,7 @@ zhBoard.addEventListener('pointerup',event=>{
   if(event.clientX<rect.left || event.clientX>=rect.right || event.clientY<rect.top || event.clientY>=rect.bottom)return;
   const suffixes:string[]=dragged?traceReadings(points,centers):[first];
   const options=suffixes.map(suffix=>reading+suffix).filter(word=>word.length<=60);
-  if(options.length)setReading(options[0],options);
+  if(options.length)setReading(options[0],options,dragged?{points,centers,prefix:reading,suffixes}:undefined);
 });
 for(const name of ['pointercancel','lostpointercapture'])zhBoard.addEventListener(name,cancelZhStroke);
 window.addEventListener('resize',cancelZhStroke);

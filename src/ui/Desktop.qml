@@ -209,6 +209,19 @@ Window {
                 }
                 MouseArea {id:zhPointer;anchors.fill:parent;preventStealing:true
                     property var points:[];property var centers:({});property string first:"";property bool dragged:false
+                    property var cachedSyllables:null
+                    property var buckets:new Map()
+                    function lookup(pairs){
+                        let entries=[]
+                        for(const pair of pairs){
+                            if(!buckets.has(pair)){
+                                if(buckets.size>=24)buckets.delete(buckets.keys().next().value)
+                                buckets.set(pair,mousyst.swipeReadings([pair]))
+                            }
+                            entries=entries.concat(buckets.get(pair))
+                        }
+                        return entries
+                    }
                     function reset(){first="";points=[];dragged=false;zhTrail.requestPaint()}
                     function point(x,y){return [11*x/width,4*y/height]}
                     function record(x,y){let p=point(x,y);if(Math.hypot(p[0]-points[0][0],p[1]-points[0][1])>0.33)dragged=true
@@ -220,7 +233,12 @@ Window {
                         centers=map;points=[point(mouse.x,mouse.y)]}
                     onPositionChanged:mouse=>{if(pressed&&first)record(mouse.x,mouse.y)}
                     onReleased:mouse=>{if(first&&mouse.x>=0&&mouse.x<width&&mouse.y>=0&&mouse.y<height){
-                        record(mouse.x,mouse.y);if(dragged)mousyst.phoneticTrace(ZhTrace.traceReadings(points,centers));else mousyst.releasePhoneticTap(first)}reset()}
+                        record(mouse.x,mouse.y);if(dragged){
+                            const guesses=ZhTrace.traceReadings(points,centers)
+                            if(!cachedSyllables)cachedSyllables=mousyst.swipeSyllables()
+                            const bucket=lookup(ZhTrace.endpointPairs(points,centers))
+                            mousyst.phoneticTrace(ZhTrace.matchSwipe(points,centers,bucket,guesses,cachedSyllables,pairs=>lookup(pairs)))
+                        }else mousyst.releasePhoneticTap(first)}reset()}
                     onCanceled:reset()
                     onVisibleChanged:if(!visible)reset()
                 }

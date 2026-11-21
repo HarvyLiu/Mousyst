@@ -289,3 +289,14 @@ def test_zhuyin_trace_declines_a_moved_caret(keyboard):
     keyboard.output.text = "moved"
     keyboard.phoneticTrace(["ㄕˋㄐㄧㄝˋ"])
     assert not keyboard.readingChoices and keyboard.output.text == "moved"
+
+
+def test_continuous_mandarin_sentence(keyboard):
+    for symbol in "ㄨㄛˇㄧㄠˋㄔㄈㄢˋ":
+        keyboard.phonetic(symbol)
+    assert keyboard.readingChoices[0] == "我要吃飯"
+    assert keyboard.output.text == ""
+    keyboard.key("Back")
+    keyboard.phonetic("ˋ")
+    keyboard.commitReading(0)
+    assert keyboard.output.text == "我要吃飯"

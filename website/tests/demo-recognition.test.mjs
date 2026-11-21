@@ -52,3 +52,34 @@ test('Zhuyin keeps corners and permits straight-through symbols in a phrase', as
   assert.ok(traceReadings(trace,centers).includes(phrase));
   assert.deepEqual(traceReadings([centers['ㄕ'],centers['ㄕ']],centers),[]);
 });
+
+
+test('Mandarin composes unlisted sentences and recognizes a multiword glide', async () => {
+  const {makeConverter}=await import('../src/demo/mandarin.mjs');
+  const {traceReadings,matchSwipe,endpointPairs}=await import('../../src/ui/zhuyin-trace.mjs');
+  const decoder=makeConverter(read('../../src/data/zhuyin.csv'));
+  const rows=['ㄅㄉˇˋㄓˊ˙ㄚㄞㄢㄦ','ㄆㄊㄍㄐㄔㄗㄧㄛㄟㄣ','ㄇㄋㄎㄑㄕㄘㄨㄜㄠㄤ','ㄈㄌㄏㄒㄖㄙㄩㄝㄡㄥ'];
+  const centers=Object.fromEntries(rows.flatMap((row,y)=>[...row].map((key,x)=>[key,[(x+.5)*11/row.length,y+.5]])));
+  const lookup=pairs=>pairs.flatMap(pair=>decoder.buckets.get(pair)??[]);
+  for(const [reading,word,noise] of [['ㄨㄛˇㄧㄠˋㄔㄈㄢˋ','我要吃飯',0],['ㄒㄩㄝˊㄕㄥ','學生',.36],['ㄕˋㄐㄧㄝˋ','世界',.32]]){
+    assert.equal(decoder.compose(reading)[0],word);
+    const points=[...reading].map((key,i)=>[centers[key][0]+noise*Math.sin(i*3),centers[key][1]+noise*Math.cos(i*2)]);
+    const ranked=matchSwipe(points,centers,lookup(endpointPairs(points,centers)),traceReadings(points,centers),decoder.syllables,lookup);
+    assert.equal(decoder.convert(ranked).words[0],word);
+  }
+  // Separate vocabulary from the examples used during recognizer development.
+  const heldOut=['ㄌㄠˇㄕ','ㄊㄨㄥˊㄒㄩㄝˊ','ㄒㄧㄣㄨㄣˊ','ㄧㄣㄩㄝˋ','ㄕˊㄐㄧㄢ','ㄍㄨㄥㄩㄢˊ',
+    'ㄅㄧㄥㄒㄧㄤ','ㄒㄧㄤㄐㄧㄠ','ㄆㄥˊㄧㄡˇ','ㄉㄧㄢˋㄧㄥˇ','ㄧㄣˊㄏㄤˊ','ㄒㄧㄚˋㄩˇ'];
+  let correct=0;
+  for(const [i,reading] of heldOut.entries()){
+    for(let run=0;run<4;run++){
+      const points=[...reading].map((key,j)=>[
+        centers[key][0]+.53*Math.sin(37*i+17*j+run),
+        centers[key][1]+.42*Math.cos(23*i-7*j+run)
+      ]);
+      const options=matchSwipe(points,centers,lookup(endpointPairs(points,centers)),traceReadings(points,centers),decoder.syllables,lookup);
+      if(decoder.convert(options).reading===reading)correct++;
+    }
+  }
+  assert.ok(correct>=42,`Only ${correct}/48 noisy traces ranked the expected reading first`);
+});

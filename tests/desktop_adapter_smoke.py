@@ -110,15 +110,15 @@ def main():
         time.sleep(0.1)
         assert json.loads(path.read_text()) == "help ", "Stale candidate modified text"
         controller.beginPhoneticGesture()
-        controller.phoneticTrace(["ㄕˋㄐㄧㄝˋ"])
-        assert controller.readingChoices[0] == "世界"
+        controller.phoneticTrace(["ㄨㄛˇㄧㄠˋㄔㄈㄢˋ"])
+        assert controller.readingChoices[0] == "我要吃飯"
         unchanged = json.loads(path.read_text())
         controller.cycleSuggestion(1)
         assert json.loads(path.read_text()) == unchanged
         controller.cycleSuggestion(-1)
         controller.key(" ")
         time.sleep(0.15)
-        assert json.loads(path.read_text()).count("世界") == 1
+        assert json.loads(path.read_text()).count("我要吃飯") == 1
         for key in " dont ":
             controller.key(key)
             time.sleep(0.08)
