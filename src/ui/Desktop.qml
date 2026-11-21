@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Window
 import QtQuick.Dialogs
 import "zhuyin-trace.mjs" as ZhTrace
+import "next-words.mjs" as Predict
 
 Window {
     id: root
@@ -105,6 +106,20 @@ Window {
                 Key {visible:mousyst.needsSpelling;direct:false;text:'Cancel pending';Layout.fillWidth:true;implicitHeight:34;onReleased:mousyst.cancel()}
                 MouseArea {anchors.fill:parent;acceptedButtons:Qt.NoButton
                     onWheel:wheel=>{if(suggestions.choices.length===0){suggestions.wheelDelta=0;wheel.accepted=false;return}suggestions.wheelDelta+=wheel.angleDelta.y;let steps=Math.trunc(suggestions.wheelDelta/120);if(steps){suggestions.wheelDelta-=steps*120;mousyst.cycleSuggestion(-steps)}wheel.accepted=true}
+                }
+            }
+            RowLayout {
+                id:nextRow; objectName:"desktopNextWords"
+                Layout.fillWidth:true; Layout.preferredHeight:28
+                readonly property string context: mousyst.predictionContext
+                readonly property var words: Predict.nextWords(context,root.zhuyin)
+                Label {text:root.zhuyin?"接著輸入":"Next word";color:"#a7a7b2";font.pixelSize:12}
+                Repeater {
+                    model:3
+                    Key {required property int index; objectName:"nextWord"+index
+                        Layout.fillWidth:true; implicitHeight:28; direct:false
+                        text:nextRow.words[index]||""; enabled:text.length>0; opacity:enabled?1:0
+                        onReleased:mousyst.appendPrediction(text,nextRow.context,root.zhuyin)}
                 }
             }
             RowLayout {visible:prefs.layout==='Full';spacing:5;Repeater {model:12;Key {required property int index;text:'F'+(index+1);Layout.fillWidth:true}}}

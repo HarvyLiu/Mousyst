@@ -262,9 +262,49 @@ class DesktopController(Controller):
             self.cancel()
             self.status = "The text field changed. Enter the reading again."
         elif self.dispatch(lambda: self.send_text(word)):
+            self.last_edit_target = expected_edit(self.reading_origin, 0, word)
+            self.owner = None
             self.clear_reading()
             self.editor.external("" if self.output else self.editor.text + word)
             self.status = "Zhuyin · Click the next reading."
+        self.changed.emit()
+
+    @Property(str, notify=desktopChanged)
+    def predictionContext(self):
+        if self.pendingCount or self.reading or self.modifiers:
+            return ""
+        if not self.output:
+            return self.editor.text[-100:]
+        target = self.owner or self.last_edit_target
+        if target and not target.get("password") and target.get("caret") is not None:
+            return (target.get("prefix") or "")[-100:]
+        return ""
+
+    @Slot(str, str, bool)
+    def appendPrediction(self, word, context, mandarin):
+        if not context or self.predictionContext != context or not word:
+            return
+        target = self.owner or self.last_edit_target
+        current = self.snapshot()
+        if self.output and not matches_owner(target, current):
+            self.cancel()
+            return
+        self.confirm_swipe(current)
+        addition = word if mandarin else word + " "
+        if not self.dispatch(lambda: self.send_text(addition)):
+            return
+        self.invalidate()
+        self.last_edit_target = expected_edit(current, 0, addition)
+        if mandarin:
+            self.editor.external(self.editor.text + word if not self.output else "")
+            self.owner = None
+        else:
+            if self.output:
+                self.editor.external(context)
+            self.editor.word(word)
+            self.owner = self.last_edit_target
+            self.candidates = [word]
+            self.selected_candidate = 0
         self.changed.emit()
 
     @Slot(int)

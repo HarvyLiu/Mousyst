@@ -19,6 +19,10 @@ const symbols = ['1234567890', '!@#$%&*()', '+-=<>/[]{}', '.,;:\'"?_\\^'];
         <button type="button" id="more-choices" aria-expanded="false" aria-controls="all-choices" aria-label="More suggestions" disabled>▾</button>
         <button type="button" id="undo-word" disabled data-en="Undo word" data-zh="撤回單字">Undo word</button>
       </div>
+      <div class="next-words" role="group" aria-labelledby="next-label">
+        <span id="next-label" data-en="Next word" data-zh="接著輸入">Next word</span>
+        {[0,1,2].map(i=><button type="button" data-next={i} disabled></button>)}
+      </div>
       <div class="keys-stage">
         <div id="all-choices" hidden></div>
         <div class="symbol-board" id="zh-board" hidden>{phoneticRows.map(row=><div>{[...row].map(key=><button type="button" data-sound={key}>{key}</button>)}</div>)}<svg class="trail" aria-hidden="true"><path fill="none"/></svg></div>
@@ -81,6 +85,8 @@ const symbols = ['1234567890', '!@#$%&*()', '+-=<>/[]{}', '.,;:\'"?_\\^'];
 .candidates button{background:none;border:0;box-shadow:none;border-radius:4px;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px}
 .candidates button:disabled{cursor:default;color:#939e96}.candidates button[aria-pressed=true]{background:#33493b;color:var(--mint)}
 .candidates #undo-word{font-size:11px;padding-inline:6px}
+.next-words{display:grid;grid-template-columns:auto repeat(3,minmax(0,1fr));align-items:center;gap:4px;min-height:32px;margin-bottom:6px}
+.next-words span{color:#bbc8bf;font-size:12px}.next-words button{font-size:13px;min-height:28px;padding:2px}.next-words button:disabled{visibility:hidden}
 .keys-stage{height:clamp(134px,23vw,180px);position:relative}
 .letter-board,.symbol-board{height:100%;display:grid;gap:4px;position:relative}
 .letter-board{touch-action:none;grid-template-rows:repeat(3,1fr)}

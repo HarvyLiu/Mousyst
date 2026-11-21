@@ -79,6 +79,30 @@ def swipe(keyboard, word=0):
     keyboard.stroke([{"x": word, "y": 0}, {"x": word + 1, "y": 1}])
 
 
+def test_append_prediction_spacing_and_target(keyboard):
+    c = keyboard
+    for letter in "thank ":
+        c.key(letter)
+    assert c.predictionContext == "thank "
+    c.appendPrediction("you", c.predictionContext, False)
+    c.key(".")
+    assert c.output.text == "thank you."
+    c.output.identity = (2,)
+    c.appendPrediction("more", c.predictionContext, False)
+    assert c.output.text == "thank you."
+
+
+def test_prediction_after_mandarin_commit(keyboard):
+    c = keyboard
+    for symbol in "ㄨㄛˇㄧㄠˋ":
+        c.phonetic(symbol)
+        assert not c.predictionContext
+    c.commitReading(c.readingChoices.index("我要"))
+    assert c.predictionContext == "我要"
+    c.appendPrediction("吃飯", c.predictionContext, True)
+    assert c.output.text == c.predictionContext == "我要吃飯"
+
+
 def test_two_swipes_then_punctuation(keyboard):
     c = keyboard
     swipe(c)

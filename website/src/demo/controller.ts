@@ -2,6 +2,7 @@ import {traceReadings} from '../../../src/ui/zhuyin-trace.mjs';
 import contractions from '../../../src/data/contractions.json';
 const apostrophes = new Map(contractions.automatic.map(word=>[word.toLowerCase().replaceAll("'",""),word] as const));
 import { keyCenters } from './recognizer.mjs';
+import { nextWords } from '../../../src/ui/next-words.mjs';
 
 type Point = [number, number];
 type Insertion = { start: number; end: number; before: string; after: string; candidates: string[]; selected: number };
@@ -18,6 +19,7 @@ const status = demo.querySelector<HTMLElement>('.status')!;
 const undo = demo.querySelector<HTMLButtonElement>('#undo-word')!;
 const strip = demo.querySelector<HTMLElement>('.candidates')!;
 const buttons = [...strip.querySelectorAll<HTMLButtonElement>('[data-candidate]')];
+const nextButtons = [...demo.querySelectorAll<HTMLButtonElement>('[data-next]')];
 const letters = [...board.querySelectorAll<HTMLButtonElement>('[data-letter]')];
 const trail = board.querySelector<SVGPathElement>('path')!;
 const edits: Edit[] = [];
@@ -117,7 +119,26 @@ function ownsWord() {
     text.selectionStart === owner.end && text.selectionEnd === owner.end;
 }
 
+function continuations(): string[] {
+  if (reading || edits.length || text.selectionStart !== text.selectionEnd) return [];
+  return nextWords(text.value.slice(Math.max(0,text.selectionStart-100),text.selectionStart),mandarin);
+}
+
+nextButtons.forEach((button,i)=>button.addEventListener('click',()=>{
+  const word=continuations()[i];
+  if (!word || button.textContent!==word) return;
+  const start=text.selectionStart;
+  insert(word+(mandarin?'':' '));
+  owner=mandarin ? null : {start,end:text.selectionEnd,before:'',after:text.value,candidates:[word],selected:0};
+  refreshSuggestions();
+}));
+
 function refreshSuggestions() {
+  const next=continuations();
+  nextButtons.forEach((button,i)=>{
+    button.textContent=next[i] || '';
+    button.disabled=!next[i];
+  });
   const active = ownsWord() && edits.length === 0 ? owner : null;
   const list=currentChoices();
   const selected=reading ? highlight : active?.selected ?? 0;
@@ -353,7 +374,8 @@ text.addEventListener('keydown',event=>{
   if (event.key!=='Shift' && event.key!=='Control' && event.key!=='Alt' && event.key!=='Meta') invalidate();
 });
 document.addEventListener('selectionchange',()=>{
-  if (owner && !ownsWord()) {owner=null;refreshSuggestions();}
+  if (owner && !ownsWord()) owner=null;
+  refreshSuggestions();
 });
 document.addEventListener('keydown',event=>{
   if (event.key==='Escape') invalidate();

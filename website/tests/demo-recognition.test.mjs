@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import {nextWords} from '../../src/ui/next-words.mjs';
+
+test('next words follow completed English words and confirmed Mandarin text',()=>{
+  assert.equal(nextWords('Thank ',false)[0],'you');
+  assert.ok(nextWords('THANK YOU ',false).includes('for'));
+  assert.equal(nextWords('現在我要',true)[0],'吃飯');
+  assert.deepEqual(nextWords('thank',false),[]);
+  assert.deepEqual(nextWords('謝謝。',true),[]);
+  assert.deepEqual(nextWords('unlisted ',false),[]);
+});
 import { keyCenters, makeRecognizer } from '../src/demo/recognizer.mjs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
