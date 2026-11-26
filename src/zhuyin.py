@@ -1,7 +1,7 @@
 """Offline Mandarin conversion and swipe lookup using the Chewing phrase dictionary."""
+import math
 from functools import lru_cache
 from pathlib import Path
-import math
 
 ROWS = ("ㄅㄉˇˋㄓˊ˙ㄚㄞㄢㄦ", "ㄆㄊㄍㄐㄔㄗㄧㄛㄟㄣ",
         "ㄇㄋㄎㄑㄕㄘㄨㄜㄠㄤ", "ㄈㄌㄏㄒㄖㄙㄩㄝㄡㄥ")

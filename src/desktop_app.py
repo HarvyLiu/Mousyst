@@ -31,14 +31,13 @@ from desktop import DesktopInput, MiddleButtonHook
 from input_session import accepts_insertion, matches_owner
 from keymap import shifted_text
 from practice import Controller
-from zhuyin import ROWS, SYMBOLS, compose, convert, swipe_buckets, syllables
 from settings import DEFAULTS, Settings
 from shelf_tools import ShelfTools
 from swipe_learning import SwipeLearning
 from tray import app_icon
 from welcome import WelcomeCard
 from window_behavior import KeyboardActivationFilter
-
+from zhuyin import ROWS, SYMBOLS, compose, convert, swipe_buckets, syllables
 
 AUTO_CONTRACTIONS = {
     word.lower().replace("'", ""): word for word in
@@ -201,9 +200,13 @@ class DesktopController(Controller):
 
     @Slot(str)
     def releasePhoneticTap(self, symbol):
-        if self.gesture_still_current():
-            if symbol in SYMBOLS and len(self.reading)<60 and self.prepare_reading(self.gesture_origin):
-                self.update_reading(self.reading + symbol)
+        if (
+            self.gesture_still_current()
+            and symbol in SYMBOLS
+            and len(self.reading) < 60
+            and self.prepare_reading(self.gesture_origin)
+        ):
+            self.update_reading(self.reading + symbol)
 
     def gesture_still_current(self):
         if self.output and not accepts_insertion(getattr(self, "gesture_origin", None), self.snapshot()):

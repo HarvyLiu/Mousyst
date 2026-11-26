@@ -6,7 +6,6 @@ import re
 
 from keyboard_layout import CENTERS
 
-
 LEARNABLE = re.compile(r"(?=.{1,32}$)[a-z]+(?:'[a-z]+)?")
 
 
